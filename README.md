@@ -2,6 +2,11 @@
 
 This action runs `dprint check` on your source code and fails the build if something is not properly formatted.
 
+
+
+
+
+
 ## Usage
 
 ```yml
