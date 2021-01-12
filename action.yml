@@ -1,0 +1,16 @@
+
+name: 'check'
+description: 'Run `dprint check` on your source code'
+author: 'thomaseizinger'
+runs:
+  using: 'composite'
+  steps:
+    - name: Install dprint
+      run: |
+        curl -fsSL https://dprint.dev/install.sh | sh
+        echo "/home/runner/.dprint/bin" >> $GITHUB_PATH
+    - name: Check formatting
+      run: dprint check
+branding:
+  icon: 'check-circle'
+  color: 'gray-dark'
