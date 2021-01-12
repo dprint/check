@@ -1,5 +1,5 @@
 
-name: 'check'
+name: 'dprint-check'
 description: 'Run `dprint check` on your source code'
 author: 'thomaseizinger'
 runs:
