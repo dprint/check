@@ -8,7 +8,7 @@ runs:
     - name: Install dprint
       shell: bash
       run: |
-        curl -fsSL https://dprint.dev/install.sh | sh -s 0.11.0 > /dev/null 2>&1
+        curl -fsSL https://dprint.dev/install.sh | sh -s 0.11.1 > /dev/null 2>&1
         echo "/home/runner/.dprint/bin" >> $GITHUB_PATH
     - name: Check formatting
       shell: bash
