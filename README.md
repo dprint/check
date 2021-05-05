@@ -14,5 +14,5 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
-      - uses: dprint/check@v1.3
+      - uses: dprint/check@v1.4
 ```
