@@ -12,8 +12,8 @@ runs:
     - name: Install dprint
       shell: bash
       run: |
-        echo "Installing dprint $INPUT_DPRINT-VERSION"
-        if [ $INPUT_DPRINT-VERSION -eq "latest" ]; then (curl -fsSL https://dprint.dev/install.sh | sh > /dev/null 2>&1); else (curl -fsSL https://dprint.dev/install.sh | sh -s $INPUT_DPRINT-VERSION > /dev/null 2>&1); fi
+        echo "Installing dprint ${{ inputs.dprint-version }}"
+        if [[ ${{ inputs.dprint-version }} -eq "latest" ]]; then (curl -fsSL https://dprint.dev/install.sh | sh > /dev/null 2>&1); else (curl -fsSL https://dprint.dev/install.sh | sh -s ${{ inputs.dprint-version }} > /dev/null 2>&1); fi
         echo "/home/runner/.dprint/bin" >> $GITHUB_PATH
     - name: Check formatting
       shell: bash
