@@ -13,7 +13,8 @@ runs:
       shell: bash
       run: |
         echo "Installing dprint ${{ inputs.dprint-version }}"
-        if [[ ${{ inputs.dprint-version }} -eq "latest" ]]; then (curl -fsSL https://dprint.dev/install.sh | sh > /dev/null 2>&1); else (curl -fsSL https://dprint.dev/install.sh | sh -s ${{ inputs.dprint-version }} > /dev/null 2>&1); fi
+        chmod +x install.sh
+        ./install.sh "${{ inputs.dprint-version }}"
         echo "/home/runner/.dprint/bin" >> $GITHUB_PATH
     - name: Check formatting
       shell: bash
