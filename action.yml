@@ -3,8 +3,8 @@ name: 'dprint-check-action'
 description: 'Run `dprint check` on your source code'
 author: 'thomaseizinger'
 inputs:
-  version:
-    description: 'Specific dprint version to use'
+  dprint-version:
+    description: 'Specific dprint version to use (ex. 0.17.0)'
     required: false
     default: ''
 runs:
@@ -13,7 +13,7 @@ runs:
     - name: Install dprint
       shell: bash
       run: |
-        curl -fsSL https://dprint.dev/install.sh | sh -s ${{ inputs.version }} > /dev/null 2>&1
+        curl -fsSL https://dprint.dev/install.sh | sh -s ${{ inputs.dprint-version }} > /dev/null 2>&1
         echo "/home/runner/.dprint/bin" >> $GITHUB_PATH
     - name: Check formatting
       shell: bash

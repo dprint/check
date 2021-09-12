@@ -9,5 +9,10 @@ jobs:
       - name: Checkout sources
         uses: actions/checkout@v2
 
-      - name: Check formatting
+      - name: Check formatting latest
         uses: ./
+
+      - name: Check formatting specific version
+        uses: ./
+        with:
+          dprint-version: 0.17.0
