@@ -28,5 +28,5 @@ To use a specific version, specify that with the `dprint-version` input:
 ```yml
 - uses: dprint/check@v2.0
   with:
-    dprint-version: "0.17.0"
+    dprint-version: 0.17.0
 ```
