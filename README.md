@@ -14,5 +14,21 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
+      - uses: dprint/check@v1.6
+```
+
+## Configuration
+
+You can install a particular version of dprint like this:
+
+```yml
+jobs:
+  style:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+
       - uses: dprint/check@v1.5
+        with:
+          version: 0.17.0
 ```

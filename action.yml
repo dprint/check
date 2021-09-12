@@ -2,13 +2,18 @@
 name: 'dprint-check-action'
 description: 'Run `dprint check` on your source code'
 author: 'thomaseizinger'
+inputs:
+  version:
+    description: 'Specific dprint version to use'
+    required: false
+    default: ''
 runs:
   using: 'composite'
   steps:
     - name: Install dprint
       shell: bash
       run: |
-        curl -fsSL https://dprint.dev/install.sh | sh -s 0.15.0 > /dev/null 2>&1
+        curl -fsSL https://dprint.dev/install.sh | sh -s ${{ inputs.version }} > /dev/null 2>&1
         echo "/home/runner/.dprint/bin" >> $GITHUB_PATH
     - name: Check formatting
       shell: bash
