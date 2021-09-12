@@ -2,13 +2,18 @@
 name: 'dprint-check-action'
 description: 'Run `dprint check` on your source code'
 author: 'thomaseizinger'
+inputs:
+  dprint-version:
+    description: The specific dprint version to install (ex. 0.17.0).
+    default: "latest"
 runs:
   using: 'composite'
   steps:
     - name: Install dprint
       shell: bash
       run: |
-        curl -fsSL https://dprint.dev/install.sh | sh -s 0.17.0 > /dev/null 2>&1
+        echo "Installing dprint $INPUT_DPRINT_VERSION"
+        if [ $INPUT_DPRINT_VERSION -eq "latest" ]; then (curl -fsSL https://dprint.dev/install.sh | sh -s $INPUT_DPRINT_VERSION > /dev/null 2>&1); else (curl -fsSL https://dprint.dev/install.sh | sh > /dev/null 2>&1); fi
         echo "/home/runner/.dprint/bin" >> $GITHUB_PATH
     - name: Check formatting
       shell: bash
