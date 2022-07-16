@@ -3,7 +3,7 @@ description: 'Run `dprint check` on your source code'
 author: 'thomaseizinger'
 inputs:
   dprint-version:
-    description: 'Specific dprint version to use (ex. 0.17.0)'
+    description: 'Specific dprint version to use (ex. 0.30.3)'
     required: false
     default: ''
 runs:
@@ -16,7 +16,7 @@ runs:
         echo "/home/runner/.dprint/bin" >> $GITHUB_PATH
     - name: Check formatting
       shell: bash
-      run: dprint check
+      run: ~/.dprint/bin/dprint check
 branding:
   icon: 'check-circle'
   color: 'gray-dark'
