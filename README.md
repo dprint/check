@@ -17,11 +17,11 @@ jobs:
       - uses: dprint/check@v2.1
 ```
 
-If you are using a matrix, most likely you will only want to run it on one of them:
+If you are using a matrix, most likely you will only want to run it only on Linux. For example:
 
 ```yml
 - name: Check format
-  if: contains(matrix.os, 'ubuntu')
+  if: runner.os == 'Linux'
   uses: dprint/check@v2.1
 ```
 
