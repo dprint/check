@@ -9,6 +9,11 @@ jobs:
       matrix:
         os: [ubuntu-latest, macOS-latest, windows-latest]
     steps:
+      - name: Use LF line endings
+        run: |
+          git config --global core.autocrlf false
+          git config --global core.eol lf
+
       - uses: actions/checkout@v3
 
       - name: Check formatting latest

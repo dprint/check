@@ -38,3 +38,28 @@ To use a specific version, specify that with the `dprint-version` input:
   with:
     dprint-version: 0.30.3
 ```
+
+## Troubleshooting
+
+### Windows line endings
+
+When running on Windows, you may get a lot of messages like:
+
+```
+from D:\a\check\check\README.md:
+ | Text differed by line endings.
+--
+```
+
+This is because unfortunately git is configured in GH actions to check out line endings as CRLF (`\r\n`).
+
+You can fix this by only running the action on Linux as shown above (recommended), or to do the following before checking out the repo:
+
+```yml
+- name: Ensure LF line endings for Windows
+  run: |
+    git config --global core.autocrlf false
+    git config --global core.eol lf
+
+- uses: actions/checkout@v3
+```
