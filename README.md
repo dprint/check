@@ -20,9 +20,8 @@ jobs:
 If you are using a matrix, most likely you will only want to run it only on Linux. For example:
 
 ```yml
-- name: Check format
+- uses: dprint/check@v2.1
   if: runner.os == 'Linux'
-  uses: dprint/check@v2.1
 ```
 
 ### Latest Version
