@@ -6,6 +6,10 @@ inputs:
     description: 'Specific dprint version to use (ex. 0.30.3)'
     required: false
     default: ''
+  dprint-config-path:
+    description: 'Specific dprint config to use (ex. dprint.json)'
+    required: true
+    default: 'dprint.json'
 runs:
   using: 'composite'
   steps:
@@ -16,7 +20,7 @@ runs:
         echo "/home/runner/.dprint/bin" >> $GITHUB_PATH
     - name: Check formatting
       shell: bash
-      run: ~/.dprint/bin/dprint check
+      run: ~/.dprint/bin/dprint check --config '${{ inputs.dprint-config-path }}'
 branding:
   icon: 'check-circle'
   color: 'gray-dark'

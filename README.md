@@ -38,6 +38,20 @@ To use a specific version, specify that with the `dprint-version` input:
     dprint-version: 0.30.3
 ```
 
+### Config Path
+
+By default, `dprint/check` uses the `dprint.json`.
+
+### Specific Config
+
+To use a specific config, specify that with the `dprint-config-path` input:
+
+```yml
+- uses: dprint/check@v2.1
+  with:
+    dprint-config-path: dprint-ci.json
+```
+
 ## Troubleshooting
 
 ### Windows line endings
