@@ -23,3 +23,14 @@ jobs:
         uses: ./
         with:
           dprint-version: 0.30.3
+
+      - name: Check formatting specific config
+        uses: ./
+        with:
+          config-path: 'dprint-another.json'
+
+      - name: Check formatting specific version and config
+        uses: ./
+        with:
+          dprint-version: 0.30.3
+          config-path: 'dprint-another.json'
