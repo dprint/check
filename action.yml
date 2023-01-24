@@ -23,6 +23,7 @@ runs:
       if: "${{ inputs.config-path == '' }}"
       run: ~/.dprint/bin/dprint check
     - name: Check formatting with config
+      shell: bash
       if: "${{ inputs.config-path != '' }}"
       run: ~/.dprint/bin/dprint check --config '${{ inputs.config-path }}'
 branding:
