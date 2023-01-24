@@ -27,12 +27,10 @@ jobs:
       - name: Check formatting specific config
         uses: ./
         with:
-          dprint-config-path: 'dprint-another.json'
+          config-path: 'dprint-another.json'
 
-      - name: Check formatting old version and specific config
+      - name: Check formatting specific version and config
         uses: ./
         with:
-          # config schema `projectType` is removed since 0.15.0
-          # ref: https://github.com/dprint/dprint/commit/f41d1fa50d68fd0d0c1a7def9fb6cbae25b0ddc6
-          dprint-version: 0.15.0
-          dprint-config-path: 'dprint-another.json'
+          dprint-version: 0.30.3
+          config-path: 'dprint-another.json'

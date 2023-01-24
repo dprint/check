@@ -44,12 +44,12 @@ By default, `dprint/check` uses the `dprint.json`.
 
 ### Specific Config
 
-To use a specific config, specify that with the `dprint-config-path` input:
+To use a specific config, specify that with the `config-path` input:
 
 ```yml
 - uses: dprint/check@v2.1
   with:
-    dprint-config-path: dprint-ci.json
+    config-path: dprint-ci.json
 ```
 
 ## Troubleshooting
