@@ -34,6 +34,7 @@ jobs:
         with:
           dprint-version: 0.30.3
           config-path: 'dprint.json'
+
       - name: make poorly-formatted json file
         run: |
           echo '{"a": 1, "b": 2}' > poorly-formatted.json
@@ -41,6 +42,4 @@ jobs:
         uses: ./
         with:
           args: --excludes poorly-formatted.json
-
-
 
