@@ -52,6 +52,21 @@ To use a specific config, specify that with the `config-path` input:
     config-path: dprint-ci.json
 ```
 
+### Args
+
+To pass additional arguments to `dprint check`, pass them to the `args` input. E.g. to only check changed files:
+
+```yml
+- name: Get changed files
+  id: changed-files
+  uses: tj-actions/changed-files@v45
+- uses: dprint/check@v2.2
+  with:
+    args: >-
+      --allow-no-files
+      ${{ steps.changed-files.outputs.all_changed_files }}
+```
+
 ## Troubleshooting
 
 ### Windows line endings
