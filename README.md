@@ -12,15 +12,15 @@ jobs:
   style:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
-      - uses: dprint/check@v2.2
+      - uses: dprint/check@v2.3
 ```
 
 If you are using a matrix, most likely you will only want to run it only on Linux. For example:
 
 ```yml
-- uses: dprint/check@v2.2
+- uses: dprint/check@v2.3
   if: runner.os == 'Linux'
 ```
 
@@ -33,7 +33,7 @@ By default, `dprint/check` uses the latest version of dprint.
 To use a specific version, specify that with the `dprint-version` input:
 
 ```yml
-- uses: dprint/check@v2.2
+- uses: dprint/check@v2.3
   with:
     dprint-version: 0.30.3
 ```
@@ -47,7 +47,7 @@ By default, `dprint/check` uses the auto-discovered configuration file.
 To use a specific config, specify that with the `config-path` input:
 
 ```yml
-- uses: dprint/check@v2.2
+- uses: dprint/check@v2.3
   with:
     config-path: dprint-ci.json
 ```
@@ -60,7 +60,7 @@ To pass additional arguments to `dprint check`, pass them to the `args` input. E
 - name: Get changed files
   id: changed-files
   uses: tj-actions/changed-files@v45
-- uses: dprint/check@v2.2
+- uses: dprint/check@v2.3
   with:
     args: >-
       --allow-no-files
@@ -89,5 +89,5 @@ You can fix this by only running the action on Linux as shown above (recommended
     git config --global core.autocrlf false
     git config --global core.eol lf
 
-- uses: actions/checkout@v3
+- uses: actions/checkout@v4
 ```

@@ -1,7 +1,7 @@
 {
-  "includes": ["**/*.{md,json}"],
   "plugins": [
-    "https://plugins.dprint.dev/json-0.15.3.wasm",
-    "https://plugins.dprint.dev/markdown-0.13.3.wasm"
+    "https://plugins.dprint.dev/json-0.20.0.wasm",
+    "https://plugins.dprint.dev/markdown-0.18.0.wasm",
+    "https://plugins.dprint.dev/g-plane/pretty_yaml-v0.5.1.wasm"
   ]
 }
