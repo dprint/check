@@ -133,5 +133,5 @@ action({
 });
 
 if (!isLinting) {
-  await $`dprint fmt --log-level=warn action.yml`;
+  await $`dprint fmt action.yml`;
 }
