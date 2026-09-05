@@ -43,12 +43,11 @@ const cacheDir = expr("env.DPRINT_CACHE_DIR");
 // attestation (available from dprint 0.57.1) is verified, so nothing outside of
 // GitHub is trusted; gh is available on all GitHub-hosted runners, and without
 // it the asset is downloaded from GitHub releases unverified
-const download = step({
-  name: "Download dprint",
-  id: "download",
+const resolve = step({
+  name: "Resolve dprint version",
+  id: "resolve",
   env: {
     DPRINT_VERSION: inputs["dprint-version"],
-    VERIFY_ATTESTATION: inputs["verify-attestation"],
     GH_TOKEN: expr("github.token"),
   },
   run: [
@@ -65,41 +64,101 @@ const download = step({
     `  if ldd /bin/sh | grep -q musl; then target="$target-musl"; else target="$target-gnu"; fi`,
     `fi`,
     `asset="dprint-$target.zip"`,
-    `zip="$RUNNER_TEMP/$asset"`,
-    `verifiable=false`,
+    `version="$DPRINT_VERSION"`,
+    `digest=""`,
+    `attested=false`,
     `if command -v gh > /dev/null; then`,
-    `  version="\${DPRINT_VERSION:-$(gh release view --repo dprint/dprint --json tagName --jq .tagName)}"`,
-    `  gh release download "$version" --repo dprint/dprint --pattern "$asset" --output "$zip" --clobber`,
+    `  # resolves the latest version when none was specified and gets the`,
+    `  # release's digest of the asset for checking a cached download against`,
+    `  release=$(gh release view \${DPRINT_VERSION:+"$DPRINT_VERSION"} --repo dprint/dprint --json tagName,assets \\`,
+    `    --jq "[.tagName, (.assets[] | select(.name == \\"$asset\\") | .digest // \\"\\")] | @tsv")`,
+    `  IFS=$'\\t' read -r version digest <<< "$release"`,
     `  # releases before 0.57.1 don't have attestations`,
-    `  if [ "$VERIFY_ATTESTATION" != "true" ]; then`,
-    `    echo "Attestation verification is disabled."`,
-    `  elif [ "$(printf '%s\\n' 0.57.1 "$version" | sort -V | head -n 1)" = "0.57.1" ]; then`,
-    `    verifiable=true`,
-    `  else`,
-    `    echo "::warning title=dprint::dprint $version predates build provenance attestations, so $asset can't be verified. Upgrade to dprint 0.57.1 or later to have the download verified."`,
+    `  if [ "$(printf '%s\\n' 0.57.1 "$version" | sort -V | head -n 1)" = "0.57.1" ]; then`,
+    `    attested=true`,
     `  fi`,
-    `else`,
-    `  if [ "$VERIFY_ATTESTATION" = "true" ]; then`,
-    `    echo "::warning title=dprint::The GitHub CLI (gh) is not available on this runner, so $asset can't be verified. Install it to have the download verified."`,
-    `  fi`,
-    `  version="$DPRINT_VERSION"`,
-    `  if [ -n "$version" ]; then`,
-    `    url="https://github.com/dprint/dprint/releases/download/$version/$asset"`,
-    `  else`,
-    `    url="https://github.com/dprint/dprint/releases/latest/download/$asset"`,
-    `  fi`,
-    `  curl -fsSL --output "$zip" "$url"`,
     `fi`,
-    `echo "Downloaded $asset\${version:+ for dprint $version}."`,
-    `echo "zip=$zip" >> "$GITHUB_OUTPUT"`,
-    `echo "verifiable=$verifiable" >> "$GITHUB_OUTPUT"`,
+    `echo "dprint \${version:-latest} ($asset)"`,
+    `echo "version=$version" >> "$GITHUB_OUTPUT"`,
+    `echo "asset=$asset" >> "$GITHUB_OUTPUT"`,
+    `echo "digest=$digest" >> "$GITHUB_OUTPUT"`,
+    `echo "attested=$attested" >> "$GITHUB_OUTPUT"`,
+    `echo "cache-key=dprint-executable-$RUNNER_OS-$RUNNER_ARCH-$version" >> "$GITHUB_OUTPUT"`,
   ],
-  outputs: ["zip", "verifiable"] as const,
+  outputs: ["version", "asset", "digest", "attested", "cache-key"] as const,
 });
+
+// the verified download is cached per version, and on a hit its digest is
+// checked against the release's so the attestation verification can be skipped
+const downloadDir = concat(expr("runner.temp"), "/dprint-download");
+const cacheDownload = cacheEnabled.and(resolve.outputs.digest.notEquals(""));
+const restoreDownload = step({
+  name: "Restore dprint download",
+  id: "restore-download",
+  if: cacheDownload,
+  uses: "actions/cache/restore@v5",
+  with: {
+    path: downloadDir,
+    key: resolve.outputs["cache-key"],
+  },
+  outputs: ["cache-hit"] as const,
+}).dependsOn(resolve);
+
+const download = step({
+  name: "Download dprint",
+  id: "download",
+  env: {
+    VERSION: resolve.outputs.version,
+    ASSET: resolve.outputs.asset,
+    DIGEST: resolve.outputs.digest,
+    ATTESTED: resolve.outputs.attested,
+    CACHE_HIT: restoreDownload.outputs["cache-hit"],
+    VERIFY_ATTESTATION: inputs["verify-attestation"],
+    GH_TOKEN: expr("github.token"),
+  },
+  run: [
+    `download_dir="$RUNNER_TEMP/dprint-download"`,
+    `mkdir -p "$download_dir"`,
+    `zip="$download_dir/$ASSET"`,
+    `sha256() { if command -v sha256sum > /dev/null; then sha256sum "$1"; else shasum -a 256 "$1"; fi | cut -d ' ' -f 1; }`,
+    `verify=false`,
+    `save=false`,
+    `if [ "$CACHE_HIT" = "true" ] && [ -f "$zip" ] && [ "sha256:$(sha256 "$zip")" = "$DIGEST" ]; then`,
+    `  echo "Using the cached download of $ASSET for dprint $VERSION, which matches the release's digest."`,
+    `else`,
+    `  if command -v gh > /dev/null; then`,
+    `    gh release download "$VERSION" --repo dprint/dprint --pattern "$ASSET" --output "$zip" --clobber`,
+    `    if [ "$VERIFY_ATTESTATION" != "true" ]; then`,
+    `      echo "Attestation verification is disabled."`,
+    `    elif [ "$ATTESTED" = "true" ]; then`,
+    `      verify=true`,
+    `    else`,
+    `      echo "::warning title=dprint::dprint $VERSION predates build provenance attestations, so $ASSET can't be verified. Upgrade to dprint 0.57.1 or later to have the download verified."`,
+    `    fi`,
+    `    if [ -n "$DIGEST" ]; then save=true; fi`,
+    `  else`,
+    `    if [ "$VERIFY_ATTESTATION" = "true" ]; then`,
+    `      echo "::warning title=dprint::The GitHub CLI (gh) is not available on this runner, so $ASSET can't be verified. Install it to have the download verified."`,
+    `    fi`,
+    `    if [ -n "$VERSION" ]; then`,
+    `      url="https://github.com/dprint/dprint/releases/download/$VERSION/$ASSET"`,
+    `    else`,
+    `      url="https://github.com/dprint/dprint/releases/latest/download/$ASSET"`,
+    `    fi`,
+    `    curl -fsSL --output "$zip" "$url"`,
+    `  fi`,
+    `  echo "Downloaded $ASSET\${VERSION:+ for dprint $VERSION}."`,
+    `fi`,
+    `echo "zip=$zip" >> "$GITHUB_OUTPUT"`,
+    `echo "verify=$verify" >> "$GITHUB_OUTPUT"`,
+    `echo "save=$save" >> "$GITHUB_OUTPUT"`,
+  ],
+  outputs: ["zip", "verify", "save"] as const,
+}).dependsOn(resolve).comesAfter(restoreDownload);
 
 const verify = step({
   name: "Verify dprint attestation",
-  if: download.outputs.verifiable.equals("true"),
+  if: download.outputs.verify.equals("true"),
   env: {
     ZIP: download.outputs.zip,
     GH_TOKEN: expr("github.token"),
@@ -109,6 +168,17 @@ const verify = step({
     `echo "Verified the build provenance attestation of $(basename "$ZIP")."`,
   ],
 }).dependsOn(download);
+
+// saved after verifying so only a verified download is ever cached
+const saveDownload = step({
+  name: "Save dprint download",
+  if: cacheDownload.and(download.outputs.save.equals("true")),
+  uses: "actions/cache/save@v5",
+  with: {
+    path: downloadDir,
+    key: resolve.outputs["cache-key"],
+  },
+}).dependsOn(download).comesAfter(verify);
 
 const install = step({
   name: "Install dprint",
@@ -125,7 +195,7 @@ const install = step({
     `fi`,
     `"$bin_dir/dprint" --version`,
   ],
-}).dependsOn(download).comesAfter(verify);
+}).dependsOn(download).comesAfter(verify, saveDownload);
 
 // the hash of the config file the check will use, or of every config file in
 // the repo when dprint discovers the config itself (a remote config url can't
@@ -289,7 +359,19 @@ action({
     },
   },
   defaults: { run: { shell: "bash" } },
-  steps: [download, verify, install, restoreCache, hashCacheBefore, check, hashCacheAfter, saveCache],
+  steps: [
+    resolve,
+    restoreDownload,
+    download,
+    verify,
+    saveDownload,
+    install,
+    restoreCache,
+    hashCacheBefore,
+    check,
+    hashCacheAfter,
+    saveCache,
+  ],
   branding: { icon: "check-circle", color: "gray-dark" },
 }).writeOrLint({
   filePath: new URL("../../action.yml", import.meta.url),

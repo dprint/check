@@ -12,7 +12,7 @@ jobs:
   style:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: dprint/check@v2.3
 ```
@@ -105,6 +105,7 @@ This caches:
 
 - The downloaded and compiled plugins, so they don't need to be downloaded and compiled on every run.
 - The [incremental](https://dprint.dev/cli/#incremental) state, so `dprint check` only checks files that changed since the last run that saw them.
+- The verified download of the dprint executable, per version, so the attestation verification can be skipped when the cached download matches the release's digest.
 
 dprint validates the restored cache itself, so it is safe to restore the cache from a run with a different dprint version or configuration. A run saves a new cache entry when the check changed the cache (ex. a plugin was compiled or a file was checked for the first time) and the next run restores the closest match: a previous run of the same job with the same configuration files, then any job with the same configuration files, then any run on the same platform.
 
@@ -132,5 +133,5 @@ You can fix this by only running the action on Linux as shown above (recommended
     git config --global core.autocrlf false
     git config --global core.eol lf
 
-- uses: actions/checkout@v4
+- uses: actions/checkout@v7
 ```
