@@ -1,6 +1,6 @@
 #!/usr/bin/env -S deno run -A
-import $ from "jsr:@david/dax@0.45.0";
-import { concat, defineMatrix, expr, hashFiles, isLinting, job, step, workflow } from "jsr:@david/gagen@0.6.0";
+import $ from "@david/dax";
+import { concat, defineMatrix, expr, hashFiles, isLinting, job, step, workflow } from "@david/gagen";
 
 const matrix = defineMatrix({
   os: ["ubuntu-latest", "macOS-latest", "windows-latest"],
@@ -167,8 +167,11 @@ const lintJob = job("lint", {
       uses: "denoland/setup-deno@v2",
     }),
     step({
-      name: "Lint CI generation",
-      run: "./.github/workflows/ci.ts --lint",
+      name: "Lint generated files",
+      run: [
+        "./.github/workflows/ci.ts --lint",
+        "./.github/workflows/action.ts --lint",
+      ],
     }),
   ),
 });

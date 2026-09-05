@@ -1,0 +1,6 @@
+{
+  "imports": {
+    "@david/dax": "jsr:@david/dax@^0.50.0",
+    "@david/gagen": "jsr:@david/gagen@^0.7.0"
+  }
+}
