@@ -145,3 +145,5 @@ jobs:
           deno check .github/workflows/*.ts
           ./.github/workflows/ci.ts --lint
           ./.github/workflows/action.ts --lint
+      - name: Test annotation script
+        run: deno test -A scripts/

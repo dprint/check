@@ -184,6 +184,10 @@ const lintJob = job("lint", {
         "./.github/workflows/action.ts --lint",
       ],
     }),
+    step({
+      name: "Test annotation script",
+      run: "deno test -A scripts/",
+    }),
   ),
 });
 

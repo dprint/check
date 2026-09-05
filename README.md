@@ -67,6 +67,20 @@ To pass additional arguments to `dprint check`, pass them to the `args` input. E
       ${{ steps.changed-files.outputs.all_changed_files }}
 ```
 
+### Annotations
+
+> Available in v2.4+
+
+When a file isn't formatted, the action emits an error annotation for it, which GitHub shows on the pull request's changed files and in the check summary. The annotation points at the first change and includes the diff. This requires dprint 0.57 or later and `node` on the path (always the case on GitHub-hosted runners); otherwise the action only outputs the diffs to the log. Note that GitHub shows at most 10 error annotations per step, so the log is the complete list.
+
+To disable annotations:
+
+```yml
+- uses: dprint/check@v2.4
+  with:
+    annotations: false
+```
+
 ### Caching
 
 > Available in v2.4+

@@ -23,6 +23,11 @@ const inputs = defineInputs({
     required: false,
     default: "false",
   },
+  annotations: {
+    description: "Emit a GitHub Actions error annotation for each file that isn't formatted (requires dprint 0.57+)",
+    required: false,
+    default: "true",
+  },
 });
 
 const cacheEnabled = inputs.cache.equals("true");
@@ -122,10 +127,33 @@ const hashCacheBefore = step({
   outputs: ["hash"] as const,
 }).dependsOn(restoreCache);
 
+// with annotations enabled, the check runs with --json and the output is
+// turned into readable diffs and annotations by a script; dprint before 0.57
+// rejects --json with exit code 10 (argument parsing error), in which case
+// the check just runs again without it
 const check = step({
   name: "Check formatting",
-  env: { CONFIG_PATH: configPath },
-  run: `~/.dprint/bin/dprint check \${CONFIG_PATH:+--config "$CONFIG_PATH"} ${inputs.args}`,
+  env: {
+    CONFIG_PATH: configPath,
+    ANNOTATIONS: inputs.annotations,
+    ANNOTATE_SCRIPT: concat(expr("github.action_path"), "/scripts/annotate.mjs"),
+  },
+  run: [
+    `args=(\${CONFIG_PATH:+--config "$CONFIG_PATH"} ${inputs.args})`,
+    `if [ "$ANNOTATIONS" = "true" ] && command -v node > /dev/null; then`,
+    `  output="$RUNNER_TEMP/dprint-check.jsonl"`,
+    `  set +e`,
+    `  ~/.dprint/bin/dprint check --json "\${args[@]}" > "$output" 2> "$output.stderr"`,
+    `  code=$?`,
+    `  set -e`,
+    `  if [ "$code" != 10 ]; then`,
+    `    cat "$output.stderr" >&2`,
+    `    node "$ANNOTATE_SCRIPT" "$output"`,
+    `    exit "$code"`,
+    `  fi`,
+    `fi`,
+    `~/.dprint/bin/dprint check "\${args[@]}"`,
+  ],
 }).dependsOn(install).comesAfter(hashCacheBefore);
 
 // runs even when the check fails so the compiled plugins and the incremental
