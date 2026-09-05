@@ -195,7 +195,10 @@ const cacheHitJob = job("cache-hit", {
         `echo "expected:    $EXPECTED_KEY"`,
         `test "$MATCHED_KEY" = "$EXPECTED_KEY"`,
         // nothing new was checked, so the restored cache is left as-is
-        `test "$CACHE_CHANGED" = "false"`,
+        `if [ "$CACHE_CHANGED" != "false" ]; then`,
+        `  echo "::error title=cache-hit::The cache changed even though nothing new was checked. This happens when this job ran on a runner with different cpu features than the cache-prime job and the plugins compiled for them weren't in the cache yet (see the Compiling lines above). Re-run the workflow: the next cache-prime job restores the entry this job saved, which has the plugins compiled for both."`,
+        `  exit 1`,
+        `fi`,
       ],
     },
   ),
