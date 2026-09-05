@@ -54,7 +54,7 @@ runs:
     - name: Restore dprint cache
       id: restore-cache
       if: inputs.cache == 'true'
-      uses: actions/cache/restore@v5
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ${{ env.DPRINT_CACHE_DIR }}
         # the incremental state changes every run, so each run saves under a
@@ -76,7 +76,7 @@ runs:
       # save even when the check fails so the compiled plugins and the
       # incremental state of the correctly formatted files carry over
       if: always() && inputs.cache == 'true' && steps.restore-cache.outputs.cache-primary-key != '' && steps.restore-cache.outputs.cache-hit != 'true'
-      uses: actions/cache/save@v5
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ${{ env.DPRINT_CACHE_DIR }}
         key: ${{ steps.restore-cache.outputs.cache-primary-key }}
