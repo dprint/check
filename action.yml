@@ -20,6 +20,10 @@ inputs:
     description: Cache dprint's plugins and incremental state in the GitHub Actions cache (ex. true)
     required: false
     default: "false"
+  annotations:
+    description: Emit a GitHub Actions error annotation for each file that isn't formatted (requires dprint 0.57+)
+    required: false
+    default: "true"
 outputs:
   cache-matched-key:
     description: "Key of the cache entry that was restored, if any"
@@ -92,7 +96,23 @@ runs:
       shell: bash
       env:
         CONFIG_PATH: "${{ inputs.config-path }}"
-      run: '~/.dprint/bin/dprint check ${CONFIG_PATH:+--config "$CONFIG_PATH"} ${{ inputs.args }}'
+        ANNOTATIONS: "${{ inputs.annotations }}"
+        ANNOTATE_SCRIPT: "${{ github.action_path }}/scripts/annotate.mjs"
+      run: |-
+        args=(${CONFIG_PATH:+--config "$CONFIG_PATH"} ${{ inputs.args }})
+        if [ "$ANNOTATIONS" = "true" ] && command -v node > /dev/null; then
+          output="$RUNNER_TEMP/dprint-check.jsonl"
+          set +e
+          ~/.dprint/bin/dprint check --json "${args[@]}" > "$output" 2> "$output.stderr"
+          code=$?
+          set -e
+          if [ "$code" != 10 ]; then
+            cat "$output.stderr" >&2
+            node "$ANNOTATE_SCRIPT" "$output"
+            exit "$code"
+          fi
+        fi
+        ~/.dprint/bin/dprint check "${args[@]}"
     - name: Check if dprint cache changed
       id: cache-after
       if: always() && inputs.cache == 'true'
