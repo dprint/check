@@ -83,7 +83,8 @@ runs:
         echo "asset=$asset" >> "$GITHUB_OUTPUT"
         echo "digest=$digest" >> "$GITHUB_OUTPUT"
         echo "attested=$attested" >> "$GITHUB_OUTPUT"
-        echo "cache-key=dprint-executable-$RUNNER_OS-$RUNNER_ARCH-$version" >> "$GITHUB_OUTPUT"
+        # the digest is in the key so a re-uploaded asset gets its own entry
+        echo "cache-key=dprint-executable-$RUNNER_OS-$RUNNER_ARCH-$version-${digest#sha256:}" >> "$GITHUB_OUTPUT"
     - name: Restore dprint download
       id: restore-download
       uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
@@ -106,22 +107,27 @@ runs:
         download_dir="$RUNNER_TEMP/dprint-download"
         mkdir -p "$download_dir"
         zip="$download_dir/$ASSET"
-        sha256() { if command -v sha256sum > /dev/null; then sha256sum "$1"; else shasum -a 256 "$1"; fi | cut -d ' ' -f 1; }
+        # hashed via stdin because sha256sum escapes a file name containing a backslash
+        sha256() { if command -v sha256sum > /dev/null; then sha256sum < "$1"; else shasum -a 256 < "$1"; fi | cut -d ' ' -f 1; }
         verify=false
         save=false
         if [ "$CACHE_HIT" = "true" ] && [ -f "$zip" ] && [ "sha256:$(sha256 "$zip")" = "$DIGEST" ]; then
           echo "Using the cached download of $ASSET for dprint $VERSION, which matches the release's digest."
         else
+          if [ "$CACHE_HIT" = "true" ]; then
+            echo "The cached download of $ASSET doesn't match the release's digest, so downloading it again."
+          fi
           if command -v gh > /dev/null; then
             gh release download ${VERSION:+"$VERSION"} --repo dprint/dprint --pattern "$ASSET" --output "$zip" --clobber
             if [ "$VERIFY_ATTESTATION" != "true" ]; then
               echo "Attestation verification is disabled."
             elif [ "$ATTESTED" = "true" ]; then
               verify=true
+              # only a verified download is cached (and only when its digest is known)
+              if [ -n "$DIGEST" ]; then save=true; fi
             else
               echo "::warning title=dprint::dprint $VERSION predates build provenance attestations, so $ASSET can't be verified. Upgrade to dprint 0.57.1 or later to have the download verified."
             fi
-            if [ -n "$DIGEST" ]; then save=true; fi
           else
             if [ "$VERIFY_ATTESTATION" = "true" ]; then
               echo "::warning title=dprint::The GitHub CLI (gh) is not available on this runner, so $ASSET can't be verified. Install it to have the download verified."
