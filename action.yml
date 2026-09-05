@@ -2,7 +2,7 @@
 
 name: dprint-check-action
 description: Run `dprint check` on your source code
-author: thomaseizinger
+author: the dprint authors
 inputs:
   dprint-version:
     description: Specific dprint version to use (ex. 0.30.3)

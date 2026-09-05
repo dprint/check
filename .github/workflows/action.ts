@@ -116,7 +116,7 @@ const saveCache = step({
 action({
   name: "dprint-check-action",
   description: "Run `dprint check` on your source code",
-  author: "thomaseizinger",
+  author: "the dprint authors",
   inputs,
   outputs: {
     "cache-matched-key": {
@@ -133,5 +133,5 @@ action({
 });
 
 if (!isLinting) {
-  await $`dprint fmt action.yml`;
+  await $`dprint fmt --log-level=warn action.yml`;
 }
