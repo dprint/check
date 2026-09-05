@@ -41,6 +41,7 @@ The dprint executable is downloaded from the [GitHub release](https://github.com
 ```yml
 - uses: dprint/check@v2.4
   with:
+    # if you're doing this for perf reasons, consider `cache: true` instead
     verify-attestation: false
 ```
 
