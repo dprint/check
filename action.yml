@@ -14,6 +14,14 @@ inputs:
     description: "Additional arguments to pass to dprint check"
     required: false
     default: ""
+  cache:
+    description: "Cache dprint's plugins and incremental state in the GitHub Actions cache (ex. true)"
+    required: false
+    default: "false"
+outputs:
+  cache-matched-key:
+    description: "Key of the cache entry that was restored, if any"
+    value: ${{ steps.restore-cache.outputs.cache-matched-key }}
 runs:
   using: "composite"
   steps:
@@ -21,15 +29,57 @@ runs:
       shell: bash
       run: |
         curl -fsSL https://dprint.dev/install.sh | sh -s ${{ inputs.dprint-version }} > /dev/null 2>&1
-        echo "/home/runner/.dprint/bin" >> $GITHUB_PATH
+        if [ "$RUNNER_OS" = "Windows" ]; then
+          cygpath -w "$HOME/.dprint/bin" >> "$GITHUB_PATH"
+        else
+          echo "$HOME/.dprint/bin" >> "$GITHUB_PATH"
+        fi
+    - name: Prepare dprint cache
+      id: cache-key
+      shell: bash
+      if: inputs.cache == 'true'
+      env:
+        CONFIG_HASH: ${{ inputs.config-path != '' && !startsWith(inputs.config-path, 'http') && hashFiles(inputs.config-path) || hashFiles('**/dprint.json', '**/dprint.jsonc', '**/.dprint.json', '**/.dprint.jsonc') }}
+      run: |
+        # respect a directory the user already set so later steps share the same cache
+        if [ -z "${DPRINT_CACHE_DIR:-}" ]; then
+          cache_dir="$RUNNER_TEMP/dprint-cache"
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            cache_dir=$(cygpath -w "$cache_dir")
+          fi
+          echo "DPRINT_CACHE_DIR=$cache_dir" >> "$GITHUB_ENV"
+        fi
+        echo "platform-prefix=dprint-cache-$RUNNER_OS-$RUNNER_ARCH" >> "$GITHUB_OUTPUT"
+        echo "config-prefix=dprint-cache-$RUNNER_OS-$RUNNER_ARCH-$CONFIG_HASH" >> "$GITHUB_OUTPUT"
+    - name: Restore dprint cache
+      id: restore-cache
+      if: inputs.cache == 'true'
+      uses: actions/cache/restore@v5
+      with:
+        path: ${{ env.DPRINT_CACHE_DIR }}
+        # the incremental state changes every run, so each run saves under a
+        # unique key and restores by prefix: first a previous run of this job
+        # with the same config, then any job with the same config, then
+        # anything for this platform; dprint validates the restored plugins
+        # and incremental state itself, so a stale match is always safe
+        key: ${{ steps.cache-key.outputs.config-prefix }}-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}
+        restore-keys: |
+          ${{ steps.cache-key.outputs.config-prefix }}-${{ github.job }}-
+          ${{ steps.cache-key.outputs.config-prefix }}-
+          ${{ steps.cache-key.outputs.platform-prefix }}-
     - name: Check formatting
       shell: bash
-      if: "${{ inputs.config-path == '' }}"
-      run: ~/.dprint/bin/dprint check ${{ inputs.args }}
-    - name: Check formatting with config
-      shell: bash
-      if: "${{ inputs.config-path != '' }}"
-      run: ~/.dprint/bin/dprint check --config '${{ inputs.config-path }}' ${{ inputs.args }}
+      env:
+        CONFIG_PATH: ${{ inputs.config-path }}
+      run: ~/.dprint/bin/dprint check ${CONFIG_PATH:+--config "$CONFIG_PATH"} ${{ inputs.args }}
+    - name: Save dprint cache
+      # save even when the check fails so the compiled plugins and the
+      # incremental state of the correctly formatted files carry over
+      if: always() && inputs.cache == 'true' && steps.restore-cache.outputs.cache-primary-key != '' && steps.restore-cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v5
+      with:
+        path: ${{ env.DPRINT_CACHE_DIR }}
+        key: ${{ steps.restore-cache.outputs.cache-primary-key }}
 branding:
   icon: "check-circle"
   color: "gray-dark"
