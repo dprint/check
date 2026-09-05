@@ -33,12 +33,13 @@ const inputs = defineInputs({
 const cacheEnabled = inputs.cache.equals("true");
 const cacheDir = expr("env.DPRINT_CACHE_DIR");
 
-// downloads the release asset from GitHub and verifies its build provenance
-// attestation (available from dprint 0.57.1), so nothing outside of GitHub is
-// trusted; gh is available on all GitHub-hosted runners, and without it the
-// asset is downloaded from GitHub releases unverified
-const install = step({
-  name: "Install dprint",
+// the executable is downloaded from the GitHub release and its build provenance
+// attestation (available from dprint 0.57.1) is verified, so nothing outside of
+// GitHub is trusted; gh is available on all GitHub-hosted runners, and without
+// it the asset is downloaded from GitHub releases unverified
+const download = step({
+  name: "Download dprint",
+  id: "download",
   env: {
     DPRINT_VERSION: inputs["dprint-version"],
     GH_TOKEN: expr("github.token"),
@@ -57,30 +58,54 @@ const install = step({
     `  if ldd /bin/sh | grep -q musl; then target="$target-musl"; else target="$target-gnu"; fi`,
     `fi`,
     `asset="dprint-$target.zip"`,
-    `bin_dir="$HOME/.dprint/bin"`,
-    `mkdir -p "$bin_dir"`,
-    `zip="$bin_dir/$asset"`,
+    `zip="$RUNNER_TEMP/$asset"`,
+    `verifiable=false`,
     `if command -v gh > /dev/null; then`,
     `  version="\${DPRINT_VERSION:-$(gh release view --repo dprint/dprint --json tagName --jq .tagName)}"`,
     `  gh release download "$version" --repo dprint/dprint --pattern "$asset" --output "$zip" --clobber`,
     `  # releases before 0.57.1 don't have attestations`,
     `  if [ "$(printf '%s\n' 0.57.1 "$version" | sort -V | head -n 1)" = "0.57.1" ]; then`,
-    `    gh attestation verify "$zip" --repo dprint/dprint`,
-    `    echo "Verified the build provenance attestation of $asset for dprint $version."`,
+    `    verifiable=true`,
     `  else`,
-    `    echo "dprint $version predates build provenance attestations, so $asset was not verified."`,
+    `    echo "::warning title=dprint::dprint $version predates build provenance attestations, so $asset can't be verified. Upgrade to dprint 0.57.1 or later to have the download verified."`,
     `  fi`,
     `else`,
-    `  echo "gh is not available, so $asset was downloaded without verification."`,
-    `  if [ -n "$DPRINT_VERSION" ]; then`,
-    `    url="https://github.com/dprint/dprint/releases/download/$DPRINT_VERSION/$asset"`,
+    `  echo "::warning title=dprint::The GitHub CLI (gh) is not available on this runner, so $asset can't be verified. Install it to have the download verified."`,
+    `  version="$DPRINT_VERSION"`,
+    `  if [ -n "$version" ]; then`,
+    `    url="https://github.com/dprint/dprint/releases/download/$version/$asset"`,
     `  else`,
     `    url="https://github.com/dprint/dprint/releases/latest/download/$asset"`,
     `  fi`,
     `  curl -fsSL --output "$zip" "$url"`,
     `fi`,
-    `unzip -o -q "$zip" -d "$bin_dir"`,
-    `rm "$zip"`,
+    `echo "Downloaded $asset\${version:+ for dprint $version}."`,
+    `echo "zip=$zip" >> "$GITHUB_OUTPUT"`,
+    `echo "verifiable=$verifiable" >> "$GITHUB_OUTPUT"`,
+  ],
+  outputs: ["zip", "verifiable"] as const,
+});
+
+const verify = step({
+  name: "Verify dprint",
+  if: download.outputs.verifiable.equals("true"),
+  env: {
+    ZIP: download.outputs.zip,
+    GH_TOKEN: expr("github.token"),
+  },
+  run: [
+    `gh attestation verify "$ZIP" --repo dprint/dprint`,
+    `echo "Verified the build provenance attestation of $(basename "$ZIP")."`,
+  ],
+}).dependsOn(download);
+
+const install = step({
+  name: "Install dprint",
+  env: { ZIP: download.outputs.zip },
+  run: [
+    `bin_dir="$HOME/.dprint/bin"`,
+    `mkdir -p "$bin_dir"`,
+    `unzip -o -q "$ZIP" -d "$bin_dir"`,
     `chmod +x "$bin_dir"/dprint*`,
     `if [ "$RUNNER_OS" = "Windows" ]; then`,
     `  cygpath -w "$bin_dir" >> "$GITHUB_PATH"`,
@@ -89,7 +114,7 @@ const install = step({
     `fi`,
     `"$bin_dir/dprint" --version`,
   ],
-});
+}).dependsOn(download).comesAfter(verify);
 
 // the hash of the config file the check will use, or of every config file in
 // the repo when dprint discovers the config itself (a remote config url can't
@@ -253,7 +278,7 @@ action({
     },
   },
   defaults: { run: { shell: "bash" } },
-  steps: [install, restoreCache, hashCacheBefore, check, hashCacheAfter, saveCache],
+  steps: [download, verify, install, restoreCache, hashCacheBefore, check, hashCacheAfter, saveCache],
   branding: { icon: "check-circle", color: "gray-dark" },
 }).writeOrLint({
   filePath: new URL("../../action.yml", import.meta.url),
