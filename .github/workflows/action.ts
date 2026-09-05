@@ -28,6 +28,12 @@ const inputs = defineInputs({
     required: false,
     default: "true",
   },
+  "verify-attestation": {
+    description:
+      "Verify the build provenance attestation of the downloaded dprint executable (requires dprint 0.57.1+)",
+    required: false,
+    default: "true",
+  },
 });
 
 const cacheEnabled = inputs.cache.equals("true");
@@ -42,6 +48,7 @@ const download = step({
   id: "download",
   env: {
     DPRINT_VERSION: inputs["dprint-version"],
+    VERIFY_ATTESTATION: inputs["verify-attestation"],
     GH_TOKEN: expr("github.token"),
   },
   run: [
@@ -64,13 +71,17 @@ const download = step({
     `  version="\${DPRINT_VERSION:-$(gh release view --repo dprint/dprint --json tagName --jq .tagName)}"`,
     `  gh release download "$version" --repo dprint/dprint --pattern "$asset" --output "$zip" --clobber`,
     `  # releases before 0.57.1 don't have attestations`,
-    `  if [ "$(printf '%s\n' 0.57.1 "$version" | sort -V | head -n 1)" = "0.57.1" ]; then`,
+    `  if [ "$VERIFY_ATTESTATION" != "true" ]; then`,
+    `    echo "Attestation verification is disabled."`,
+    `  elif [ "$(printf '%s\\n' 0.57.1 "$version" | sort -V | head -n 1)" = "0.57.1" ]; then`,
     `    verifiable=true`,
     `  else`,
     `    echo "::warning title=dprint::dprint $version predates build provenance attestations, so $asset can't be verified. Upgrade to dprint 0.57.1 or later to have the download verified."`,
     `  fi`,
     `else`,
-    `  echo "::warning title=dprint::The GitHub CLI (gh) is not available on this runner, so $asset can't be verified. Install it to have the download verified."`,
+    `  if [ "$VERIFY_ATTESTATION" = "true" ]; then`,
+    `    echo "::warning title=dprint::The GitHub CLI (gh) is not available on this runner, so $asset can't be verified. Install it to have the download verified."`,
+    `  fi`,
     `  version="$DPRINT_VERSION"`,
     `  if [ -n "$version" ]; then`,
     `    url="https://github.com/dprint/dprint/releases/download/$version/$asset"`,
