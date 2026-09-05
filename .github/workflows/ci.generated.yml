@@ -25,9 +25,14 @@ jobs:
       - name: Check formatting latest
         uses: ./
       - name: Check formatting specific version
+        id: specific-version
         uses: ./
         with:
           dprint-version: 0.57.1
+      - name: Verify the specific version was installed
+        env:
+          VERSION: "${{ steps.specific-version.outputs.dprint-version }}"
+        run: test "$VERSION" = "0.57.1"
       - name: Check formatting specific config
         uses: ./
         with:
@@ -46,6 +51,24 @@ jobs:
         with:
           cache: true
           dprint-version: 0.57.1
+      - name: Check formatting without attestation verification
+        uses: ./
+        with:
+          verify-attestation: false
+      - name: Check formatting without annotations
+        uses: ./
+        with:
+          annotations: false
+      - name: Check formatting with an unattested version
+        id: unattested-version
+        uses: ./
+        with:
+          dprint-version: 0.56.1
+          config-path: tests/legacy/dprint.json
+      - name: Verify the unattested version was installed
+        env:
+          VERSION: "${{ steps.unattested-version.outputs.dprint-version }}"
+        run: test "$VERSION" = "0.56.1"
       - name: Make poorly-formatted json file
         run: 'echo ''{"a": 1, "b": 2}'' > poorly-formatted.json'
       - name: Check formatting with excludes

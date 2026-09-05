@@ -111,6 +111,14 @@ dprint validates the restored cache itself, so it is safe to restore the cache f
 
 The action sets the `DPRINT_CACHE_DIR` environment variable for the rest of the job, so a later step that runs dprint (ex. `dprint fmt`) uses the same cache. If you set `DPRINT_CACHE_DIR` yourself, set it before this action runs so the action caches that directory instead.
 
+## Outputs
+
+| Output              | Description                                                            |
+| ------------------- | ---------------------------------------------------------------------- |
+| `dprint-version`    | The version of dprint that was installed                               |
+| `cache-matched-key` | Key of the cache entry that was restored, if any                       |
+| `cache-changed`     | Whether the check changed the cache and so a new cache entry was saved |
+
 ## Troubleshooting
 
 ### Windows line endings

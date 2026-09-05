@@ -32,6 +32,21 @@ const checkoutWithLf = step({
 
 // === style job ===
 
+const specificVersionCheck = step({
+  name: "Check formatting specific version",
+  id: "specific-version",
+  uses: "./",
+  with: { "dprint-version": "0.57.1" },
+  outputs: ["dprint-version"] as const,
+});
+const unattestedVersionCheck = step({
+  name: "Check formatting with an unattested version",
+  id: "unattested-version",
+  uses: "./",
+  with: { "dprint-version": "0.56.1", "config-path": "tests/legacy/dprint.json" },
+  outputs: ["dprint-version"] as const,
+});
+
 const styleJob = job("style", {
   runsOn: matrix.os,
   strategy: { matrix },
@@ -41,10 +56,11 @@ const styleJob = job("style", {
       name: "Check formatting latest",
       uses: "./",
     },
+    specificVersionCheck,
     {
-      name: "Check formatting specific version",
-      uses: "./",
-      with: { "dprint-version": "0.57.1" },
+      name: "Verify the specific version was installed",
+      env: { VERSION: specificVersionCheck.outputs["dprint-version"] },
+      run: `test "$VERSION" = "0.57.1"`,
     },
     {
       name: "Check formatting specific config",
@@ -65,6 +81,25 @@ const styleJob = job("style", {
       name: "Check formatting with cache and specific version",
       uses: "./",
       with: { cache: true, "dprint-version": "0.57.1" },
+    },
+    {
+      name: "Check formatting without attestation verification",
+      uses: "./",
+      with: { "verify-attestation": false },
+    },
+    {
+      name: "Check formatting without annotations",
+      uses: "./",
+      with: { annotations: false },
+    },
+    // a version from before attestations, so the download can't be verified and
+    // the action warns instead; it predates npm plugin specifiers too, so it
+    // checks a config with an https plugin
+    unattestedVersionCheck,
+    {
+      name: "Verify the unattested version was installed",
+      env: { VERSION: unattestedVersionCheck.outputs["dprint-version"] },
+      run: `test "$VERSION" = "0.56.1"`,
     },
     {
       name: "Make poorly-formatted json file",

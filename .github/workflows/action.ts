@@ -48,6 +48,7 @@ const resolve = step({
   id: "resolve",
   env: {
     DPRINT_VERSION: inputs["dprint-version"],
+    CACHE: inputs.cache,
     GH_TOKEN: expr("github.token"),
   },
   run: [
@@ -66,17 +67,19 @@ const resolve = step({
     `asset="dprint-$target.zip"`,
     `version="$DPRINT_VERSION"`,
     `digest=""`,
-    `attested=false`,
-    `if command -v gh > /dev/null; then`,
-    `  # resolves the latest version when none was specified and gets the`,
-    `  # release's digest of the asset for checking a cached download against`,
+    `if [ "$CACHE" = "true" ] && command -v gh > /dev/null; then`,
+    `  # the cache key needs the exact version and a cached download is checked`,
+    `  # against the release's digest, so look them up (the download step gets`,
+    `  # the latest release itself otherwise)`,
     `  release=$(gh release view \${DPRINT_VERSION:+"$DPRINT_VERSION"} --repo dprint/dprint --json tagName,assets \\`,
     `    --jq "[.tagName, (.assets[] | select(.name == \\"$asset\\") | .digest // \\"\\")] | @tsv")`,
     `  IFS=$'\\t' read -r version digest <<< "$release"`,
-    `  # releases before 0.57.1 don't have attestations`,
-    `  if [ "$(printf '%s\\n' 0.57.1 "$version" | sort -V | head -n 1)" = "0.57.1" ]; then`,
-    `    attested=true`,
-    `  fi`,
+    `fi`,
+    `# releases before 0.57.1 don't have attestations (the latest always does)`,
+    `if [ -z "$version" ] || [ "$(printf '%s\\n' 0.57.1 "$version" | sort -V | head -n 1)" = "0.57.1" ]; then`,
+    `  attested=true`,
+    `else`,
+    `  attested=false`,
     `fi`,
     `echo "dprint \${version:-latest} ($asset)"`,
     `echo "version=$version" >> "$GITHUB_OUTPUT"`,
@@ -127,7 +130,7 @@ const download = step({
     `  echo "Using the cached download of $ASSET for dprint $VERSION, which matches the release's digest."`,
     `else`,
     `  if command -v gh > /dev/null; then`,
-    `    gh release download "$VERSION" --repo dprint/dprint --pattern "$ASSET" --output "$zip" --clobber`,
+    `    gh release download \${VERSION:+"$VERSION"} --repo dprint/dprint --pattern "$ASSET" --output "$zip" --clobber`,
     `    if [ "$VERIFY_ATTESTATION" != "true" ]; then`,
     `      echo "Attestation verification is disabled."`,
     `    elif [ "$ATTESTED" = "true" ]; then`,
@@ -145,7 +148,8 @@ const download = step({
     `    else`,
     `      url="https://github.com/dprint/dprint/releases/latest/download/$ASSET"`,
     `    fi`,
-    `    curl -fsSL --output "$zip" "$url"`,
+    `    # curl drops the authorization header on the redirect to the asset host`,
+    `    curl -fsSL -H "Authorization: Bearer $GH_TOKEN" --output "$zip" "$url"`,
     `  fi`,
     `  echo "Downloaded $ASSET\${VERSION:+ for dprint $VERSION}."`,
     `fi`,
@@ -182,6 +186,7 @@ const saveDownload = step({
 
 const install = step({
   name: "Install dprint",
+  id: "install",
   env: { ZIP: download.outputs.zip },
   run: [
     `bin_dir="$HOME/.dprint/bin"`,
@@ -193,8 +198,11 @@ const install = step({
     `else`,
     `  echo "$bin_dir" >> "$GITHUB_PATH"`,
     `fi`,
-    `"$bin_dir/dprint" --version`,
+    `version=$("$bin_dir/dprint" --version | cut -d ' ' -f 2)`,
+    `echo "Installed dprint $version."`,
+    `echo "version=$version" >> "$GITHUB_OUTPUT"`,
   ],
+  outputs: ["version"] as const,
 }).dependsOn(download).comesAfter(verify, saveDownload);
 
 // the hash of the config file the check will use, or of every config file in
@@ -349,6 +357,10 @@ action({
   author: "the dprint authors",
   inputs,
   outputs: {
+    "dprint-version": {
+      description: "The version of dprint that was installed",
+      value: install.outputs.version,
+    },
     "cache-matched-key": {
       description: "Key of the cache entry that was restored, if any",
       value: restoreCache.outputs["cache-matched-key"],
