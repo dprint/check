@@ -173,6 +173,10 @@ action({
       description: "Key of the cache entry that was restored, if any",
       value: restoreCache.outputs["cache-matched-key"],
     },
+    "cache-changed": {
+      description: "Whether the check changed the cache and so a new cache entry was saved",
+      value: hashCacheAfter.outputs.changed,
+    },
   },
   defaults: { run: { shell: "bash" } },
   steps: [install, restoreCache, hashCacheBefore, check, hashCacheAfter, saveCache],

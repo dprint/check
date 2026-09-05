@@ -24,6 +24,9 @@ outputs:
   cache-matched-key:
     description: "Key of the cache entry that was restored, if any"
     value: "${{ steps.restore-cache.outputs.cache-matched-key }}"
+  cache-changed:
+    description: Whether the check changed the cache and so a new cache entry was saved
+    value: "${{ steps.cache-after.outputs.changed }}"
 runs:
   using: composite
   steps:
