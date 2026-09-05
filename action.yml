@@ -87,7 +87,7 @@ runs:
         echo "Downloaded $asset${version:+ for dprint $version}."
         echo "zip=$zip" >> "$GITHUB_OUTPUT"
         echo "verifiable=$verifiable" >> "$GITHUB_OUTPUT"
-    - name: Verify dprint
+    - name: Verify dprint attestation
       if: steps.download.outputs.verifiable == 'true'
       shell: bash
       env:

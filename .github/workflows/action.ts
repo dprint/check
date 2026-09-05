@@ -98,7 +98,7 @@ const download = step({
 });
 
 const verify = step({
-  name: "Verify dprint",
+  name: "Verify dprint attestation",
   if: download.outputs.verifiable.equals("true"),
   env: {
     ZIP: download.outputs.zip,
