@@ -33,15 +33,61 @@ const inputs = defineInputs({
 const cacheEnabled = inputs.cache.equals("true");
 const cacheDir = expr("env.DPRINT_CACHE_DIR");
 
+// downloads the release asset from GitHub and verifies its build provenance
+// attestation (available from dprint 0.57.1), so nothing outside of GitHub is
+// trusted; gh is available on all GitHub-hosted runners, and without it the
+// asset is downloaded from GitHub releases unverified
 const install = step({
   name: "Install dprint",
+  env: {
+    DPRINT_VERSION: inputs["dprint-version"],
+    GH_TOKEN: expr("github.token"),
+  },
   run: [
-    `curl -fsSL https://dprint.dev/install.sh | sh -s ${inputs["dprint-version"]} > /dev/null 2>&1`,
-    `if [ "$RUNNER_OS" = "Windows" ]; then`,
-    `  cygpath -w "$HOME/.dprint/bin" >> "$GITHUB_PATH"`,
-    `else`,
-    `  echo "$HOME/.dprint/bin" >> "$GITHUB_PATH"`,
+    `case "$RUNNER_OS-$RUNNER_ARCH" in`,
+    `  Linux-X64) target="x86_64-unknown-linux" ;;`,
+    `  Linux-ARM64) target="aarch64-unknown-linux" ;;`,
+    `  macOS-X64) target="x86_64-apple-darwin" ;;`,
+    `  macOS-ARM64) target="aarch64-apple-darwin" ;;`,
+    `  Windows-X64) target="x86_64-pc-windows-msvc" ;;`,
+    `  Windows-ARM64) target="aarch64-pc-windows-msvc" ;;`,
+    `  *) echo "Unsupported runner: $RUNNER_OS $RUNNER_ARCH" >&2; exit 1 ;;`,
+    `esac`,
+    `if [ "$RUNNER_OS" = "Linux" ]; then`,
+    `  if ldd /bin/sh | grep -q musl; then target="$target-musl"; else target="$target-gnu"; fi`,
     `fi`,
+    `asset="dprint-$target.zip"`,
+    `bin_dir="$HOME/.dprint/bin"`,
+    `mkdir -p "$bin_dir"`,
+    `zip="$bin_dir/$asset"`,
+    `if command -v gh > /dev/null; then`,
+    `  version="\${DPRINT_VERSION:-$(gh release view --repo dprint/dprint --json tagName --jq .tagName)}"`,
+    `  gh release download "$version" --repo dprint/dprint --pattern "$asset" --output "$zip" --clobber`,
+    `  # releases before 0.57.1 don't have attestations`,
+    `  if [ "$(printf '%s\n' 0.57.1 "$version" | sort -V | head -n 1)" = "0.57.1" ]; then`,
+    `    gh attestation verify "$zip" --repo dprint/dprint`,
+    `    echo "Verified the build provenance attestation of $asset for dprint $version."`,
+    `  else`,
+    `    echo "dprint $version predates build provenance attestations, so $asset was not verified."`,
+    `  fi`,
+    `else`,
+    `  echo "gh is not available, so $asset was downloaded without verification."`,
+    `  if [ -n "$DPRINT_VERSION" ]; then`,
+    `    url="https://github.com/dprint/dprint/releases/download/$DPRINT_VERSION/$asset"`,
+    `  else`,
+    `    url="https://github.com/dprint/dprint/releases/latest/download/$asset"`,
+    `  fi`,
+    `  curl -fsSL --output "$zip" "$url"`,
+    `fi`,
+    `unzip -o -q "$zip" -d "$bin_dir"`,
+    `rm "$zip"`,
+    `chmod +x "$bin_dir"/dprint*`,
+    `if [ "$RUNNER_OS" = "Windows" ]; then`,
+    `  cygpath -w "$bin_dir" >> "$GITHUB_PATH"`,
+    `else`,
+    `  echo "$bin_dir" >> "$GITHUB_PATH"`,
+    `fi`,
+    `"$bin_dir/dprint" --version`,
   ],
 });
 
