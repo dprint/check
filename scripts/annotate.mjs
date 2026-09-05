@@ -16,7 +16,16 @@ const workspace = process.env.GITHUB_WORKSPACE ?? process.cwd();
 const entries = fs.readFileSync(jsonlPath, "utf8")
   .split("\n")
   .filter((line) => line.trim() !== "")
-  .map((line) => JSON.parse(line));
+  .flatMap((line) => {
+    try {
+      return [JSON.parse(line)];
+    } catch {
+      // dprint may have been killed mid-output, so don't let a partial line
+      // hide the diffs that were output and dprint's exit code
+      console.error(`Skipping unparsable dprint output: ${line}`);
+      return [];
+    }
+  });
 
 for (const entry of entries) {
   const relativePath = toRelativePath(entry.file, workspace);
@@ -58,7 +67,8 @@ function firstHunkRange(diff) {
   if (match == null) {
     return { line: 1, endLine: 1 };
   }
-  const line = Number(match[1]);
+  // an empty original file has a hunk starting at line 0
+  const line = Math.max(Number(match[1]), 1);
   // a count of zero means lines are only inserted after this line
   const count = Math.max(match[2] == null ? 1 : Number(match[2]), 1);
   return { line, endLine: line + count - 1 };
@@ -66,8 +76,8 @@ function firstHunkRange(diff) {
 
 function toRelativePath(filePath, workspace) {
   const relativePath = path.relative(workspace, filePath);
-  const result = relativePath.startsWith("..") ? filePath : relativePath;
-  return result.replaceAll("\\", "/");
+  const isOutside = relativePath === ".." || relativePath.startsWith(`..${path.sep}`) || path.isAbsolute(relativePath);
+  return (isOutside ? filePath : relativePath).replaceAll("\\", "/");
 }
 
 /** Removes the `--- original` and `+++ formatted` lines. */
