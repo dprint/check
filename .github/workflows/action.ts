@@ -136,12 +136,12 @@ const download = step({
     `  fi`,
     `  if command -v gh > /dev/null; then`,
     `    gh release download \${VERSION:+"$VERSION"} --repo dprint/dprint --pattern "$ASSET" --output "$zip" --clobber`,
+    `    # the download is cached when the release has a digest to check it against`,
+    `    if [ -n "$DIGEST" ]; then save=true; fi`,
     `    if [ "$VERIFY_ATTESTATION" != "true" ]; then`,
     `      echo "Attestation verification is disabled."`,
     `    elif [ "$ATTESTED" = "true" ]; then`,
     `      verify=true`,
-    `      # only a verified download is cached (and only when its digest is known)`,
-    `      if [ -n "$DIGEST" ]; then save=true; fi`,
     `    else`,
     `      echo "::warning title=dprint::dprint $VERSION predates build provenance attestations, so $ASSET can't be verified. Upgrade to dprint 0.57.1 or later to have the download verified."`,
     `    fi`,
@@ -179,7 +179,9 @@ const verify = step({
   ],
 }).dependsOn(download);
 
-// runs after the verification so a download that fails it is never cached
+// runs after the verification so a download that fails it is never cached;
+// whether to verify is up to the user, and a cached download is checked
+// against the release's digest on every hit either way
 const saveDownload = step({
   name: "Save dprint download",
   if: cacheDownload.and(download.outputs.save.equals("true")),
