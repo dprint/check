@@ -121,18 +121,30 @@ const styleJob = job("style", {
   ),
 });
 
-// === cache jobs ===
+// === cache job ===
 
+// both runs happen in one job so they share a runner: a second job could land
+// on a runner with different cpu features, which would compile its own plugin
+// variants and change the cache, and re-running only failed jobs would lose the
+// entry the first run saved
 const cachePrimeCheck = step({
   name: "Check formatting (expected to fail)",
-  id: "check",
+  id: "prime",
   uses: "./",
   continueOnError: true,
   with: { cache: true, "config-path": cacheTestConfig },
   outputs: ["cache-changed"] as const,
 });
 
-const cachePrimeJob = job("cache-prime", {
+const cacheHitCheck = step({
+  name: "Check formatting again",
+  id: "hit",
+  uses: "./",
+  with: { cache: true, "config-path": cacheTestConfig },
+  outputs: ["cache-matched-key", "cache-changed"] as const,
+});
+
+const cacheJob = job("cache", {
   runsOn: matrix.os,
   strategy: { matrix },
   defaults: { run: { shell: "bash" } },
@@ -146,34 +158,17 @@ const cachePrimeJob = job("cache-prime", {
       name: "Verify the check failed and the cache was saved",
       env: { CACHE_CHANGED: cachePrimeCheck.outputs["cache-changed"] },
       run: [
-        `test "${expr("steps.check.outcome")}" = "failure"`,
+        `test "${expr("steps.prime.outcome")}" = "failure"`,
         `test "$CACHE_CHANGED" = "true"`,
       ],
     },
-  ),
-});
-
-const cacheHitCheck = step({
-  name: "Check formatting",
-  id: "check",
-  uses: "./",
-  with: { cache: true, "config-path": cacheTestConfig },
-  outputs: ["cache-matched-key", "cache-changed"] as const,
-});
-
-const cacheHitJob = job("cache-hit", {
-  runsOn: matrix.os,
-  strategy: { matrix },
-  needs: [cachePrimeJob],
-  defaults: { run: { shell: "bash" } },
-  steps: step.dependsOn(checkoutWithLf)(
     {
-      name: "Recreate unique config",
-      run: createCacheTestConfig,
+      name: "Remove the poorly-formatted file",
+      run: "rm poorly-formatted.json",
     },
     cacheHitCheck,
     {
-      name: "Verify the cache saved by the failed cache-prime job was restored and not saved again",
+      name: "Verify the cache saved by the failed check was restored and not saved again",
       env: {
         MATCHED_KEY: cacheHitCheck.outputs["cache-matched-key"],
         CACHE_CHANGED: cacheHitCheck.outputs["cache-changed"],
@@ -185,7 +180,7 @@ const cacheHitJob = job("cache-hit", {
           "-",
           hashFiles(cacheTestConfig),
           "-",
-          cachePrimeJob.id,
+          expr("github.job"),
           "-",
           runUniqueId,
         ),
@@ -195,10 +190,7 @@ const cacheHitJob = job("cache-hit", {
         `echo "expected:    $EXPECTED_KEY"`,
         `test "$MATCHED_KEY" = "$EXPECTED_KEY"`,
         // nothing new was checked, so the restored cache is left as-is
-        `if [ "$CACHE_CHANGED" != "false" ]; then`,
-        `  echo "::error title=cache-hit::The cache changed even though nothing new was checked. This happens when this job ran on a runner with different cpu features than the cache-prime job and the plugins compiled for them weren't in the cache yet (see the Compiling lines above). Re-run the workflow: the next cache-prime job restores the entry this job saved, which has the plugins compiled for both."`,
-        `  exit 1`,
-        `fi`,
+        `test "$CACHE_CHANGED" = "false"`,
       ],
     },
   ),
@@ -236,8 +228,7 @@ workflow({
   on: ["push", "pull_request"],
   jobs: [
     styleJob,
-    cachePrimeJob,
-    cacheHitJob,
+    cacheJob,
     lintJob,
   ],
 }).writeOrLint({

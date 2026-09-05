@@ -80,7 +80,7 @@ jobs:
           test -n "$DPRINT_CACHE_DIR"
           test -d "$DPRINT_CACHE_DIR/plugins"
           dprint --version
-  cache-prime:
+  cache:
     runs-on: "${{ matrix.os }}"
     defaults:
       run:
@@ -105,7 +105,7 @@ jobs:
           } > cache-test.json
           echo '{"a": 1, "b": 2}' > poorly-formatted.json
       - name: Check formatting (expected to fail)
-        id: check
+        id: prime
         uses: ./
         continue-on-error: true
         with:
@@ -113,54 +113,28 @@ jobs:
           config-path: cache-test.json
       - name: Verify the check failed and the cache was saved
         env:
-          CACHE_CHANGED: "${{ steps.check.outputs.cache-changed }}"
+          CACHE_CHANGED: "${{ steps.prime.outputs.cache-changed }}"
         run: |-
-          test "${{ steps.check.outcome }}" = "failure"
+          test "${{ steps.prime.outcome }}" = "failure"
           test "$CACHE_CHANGED" = "true"
-  cache-hit:
-    needs:
-      - cache-prime
-    runs-on: "${{ matrix.os }}"
-    defaults:
-      run:
-        shell: bash
-    strategy:
-      matrix:
-        os:
-          - ubuntu-latest
-          - macOS-latest
-          - windows-latest
-    steps:
-      - name: Use LF line endings
-        run: |-
-          git config --global core.autocrlf false
-          git config --global core.eol lf
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - name: Recreate unique config
-        run: |-
-          {
-            echo "// ${{ github.run_id }}-${{ github.run_attempt }}"
-            cat dprint.json
-          } > cache-test.json
-      - name: Check formatting
-        id: check
+      - name: Remove the poorly-formatted file
+        run: rm poorly-formatted.json
+      - name: Check formatting again
+        id: hit
         uses: ./
         with:
           cache: true
           config-path: cache-test.json
-      - name: Verify the cache saved by the failed cache-prime job was restored and not saved again
+      - name: Verify the cache saved by the failed check was restored and not saved again
         env:
-          MATCHED_KEY: "${{ steps.check.outputs.cache-matched-key }}"
-          CACHE_CHANGED: "${{ steps.check.outputs.cache-changed }}"
-          EXPECTED_KEY: 'dprint-cache-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles(''cache-test.json'') }}-cache-prime-${{ github.run_id }}-${{ github.run_attempt }}'
+          MATCHED_KEY: "${{ steps.hit.outputs.cache-matched-key }}"
+          CACHE_CHANGED: "${{ steps.hit.outputs.cache-changed }}"
+          EXPECTED_KEY: 'dprint-cache-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles(''cache-test.json'') }}-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}'
         run: |-
           echo "matched key: $MATCHED_KEY"
           echo "expected:    $EXPECTED_KEY"
           test "$MATCHED_KEY" = "$EXPECTED_KEY"
-          if [ "$CACHE_CHANGED" != "false" ]; then
-            echo "::error title=cache-hit::The cache changed even though nothing new was checked. This happens when this job ran on a runner with different cpu features than the cache-prime job and the plugins compiled for them weren't in the cache yet (see the Compiling lines above). Re-run the workflow: the next cache-prime job restores the entry this job saved, which has the plugins compiled for both."
-            exit 1
-          fi
+          test "$CACHE_CHANGED" = "false"
   lint:
     runs-on: ubuntu-latest
     steps:
