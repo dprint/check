@@ -44,7 +44,7 @@ const styleJob = job("style", {
     {
       name: "Check formatting specific version",
       uses: "./",
-      with: { "dprint-version": "0.49.1" },
+      with: { "dprint-version": "0.57.1" },
     },
     {
       name: "Check formatting specific config",
@@ -54,7 +54,7 @@ const styleJob = job("style", {
     {
       name: "Check formatting specific version and config",
       uses: "./",
-      with: { "dprint-version": "0.49.1", "config-path": "dprint.json" },
+      with: { "dprint-version": "0.57.1", "config-path": "dprint.json" },
     },
     {
       name: "Check formatting with cache",
@@ -64,7 +64,7 @@ const styleJob = job("style", {
     {
       name: "Check formatting with cache and specific version",
       uses: "./",
-      with: { cache: true, "dprint-version": "0.49.1" },
+      with: { cache: true, "dprint-version": "0.57.1" },
     },
     {
       name: "Make poorly-formatted json file",
