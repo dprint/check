@@ -84,7 +84,7 @@ This caches:
 - The downloaded and compiled plugins, so they don't need to be downloaded and compiled on every run.
 - The [incremental](https://dprint.dev/cli/#incremental) state, so `dprint check` only checks files that changed since the last run that saw them.
 
-dprint validates the restored cache itself, so it is safe to restore the cache from a run with a different dprint version or configuration. Each run saves a new cache entry and the next run restores the closest match: a previous run of the same job with the same configuration files, then any job with the same configuration files, then any run on the same platform. Old entries are evicted by GitHub after they haven't been used for 7 days or when the repository exceeds its cache size limit.
+dprint validates the restored cache itself, so it is safe to restore the cache from a run with a different dprint version or configuration. Each run saves a new cache entry and the next run restores the closest match: a previous run of the same job with the same configuration files, then any job with the same configuration files, then any run on the same platform.
 
 The action sets the `DPRINT_CACHE_DIR` environment variable for the rest of the job, so a later step that runs dprint (ex. `dprint fmt`) uses the same cache. If you set `DPRINT_CACHE_DIR` yourself, set it before this action runs so the action caches that directory instead.
 
