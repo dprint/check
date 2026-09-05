@@ -24,6 +24,9 @@ outputs:
   cache-matched-key:
     description: "Key of the cache entry that was restored, if any"
     value: "${{ steps.restore-cache.outputs.cache-matched-key }}"
+  cache-changed:
+    description: Whether the check changed the cache and so a new cache entry was saved
+    value: "${{ steps.cache-after.outputs.changed }}"
 runs:
   using: composite
   steps:
@@ -64,14 +67,65 @@ runs:
           ${{ steps.cache-key.outputs.config-prefix }}-${{ github.job }}-
           ${{ steps.cache-key.outputs.config-prefix }}-
           ${{ steps.cache-key.outputs.platform-prefix }}-
+    - name: Hash dprint cache before check
+      id: cache-before
+      if: inputs.cache == 'true'
+      shell: bash
+      run: |-
+        hash_cache_dir() {
+          if [ ! -d "$DPRINT_CACHE_DIR" ]; then
+            echo "missing"
+            return
+          fi
+          cd "$DPRINT_CACHE_DIR"
+          # the locks directory changes on every run
+          local files
+          files=$(find . -type f -not -path "./locks/*" | LC_ALL=C sort)
+          if [ -z "$files" ]; then
+            echo "empty"
+            return
+          fi
+          { echo "$files"; echo "$files" | xargs git hash-object; } | git hash-object --stdin
+        }
+        echo "hash=$(hash_cache_dir)" >> "$GITHUB_OUTPUT"
     - name: Check formatting
       shell: bash
       env:
         CONFIG_PATH: "${{ inputs.config-path }}"
       run: '~/.dprint/bin/dprint check ${CONFIG_PATH:+--config "$CONFIG_PATH"} ${{ inputs.args }}'
+    - name: Check if dprint cache changed
+      id: cache-after
+      if: always() && inputs.cache == 'true'
+      shell: bash
+      env:
+        HASH_BEFORE: "${{ steps.cache-before.outputs.hash }}"
+      run: |-
+        hash_cache_dir() {
+          if [ ! -d "$DPRINT_CACHE_DIR" ]; then
+            echo "missing"
+            return
+          fi
+          cd "$DPRINT_CACHE_DIR"
+          # the locks directory changes on every run
+          local files
+          files=$(find . -type f -not -path "./locks/*" | LC_ALL=C sort)
+          if [ -z "$files" ]; then
+            echo "empty"
+            return
+          fi
+          { echo "$files"; echo "$files" | xargs git hash-object; } | git hash-object --stdin
+        }
+        hash_after=$(hash_cache_dir)
+        echo "before: $HASH_BEFORE"
+        echo "after:  $hash_after"
+        if [ "$hash_after" = "$HASH_BEFORE" ]; then
+          echo "changed=false" >> "$GITHUB_OUTPUT"
+        else
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+        fi
     - name: Save dprint cache
       uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
-      if: always() && inputs.cache == 'true' && steps.restore-cache.outputs.cache-primary-key != '' && steps.restore-cache.outputs.cache-hit != 'true'
+      if: always() && inputs.cache == 'true' && steps.restore-cache.outputs.cache-primary-key != '' && steps.restore-cache.outputs.cache-hit != 'true' && steps.cache-after.outputs.changed == 'true'
       with:
         path: "${{ env.DPRINT_CACHE_DIR }}"
         key: "${{ steps.restore-cache.outputs.cache-primary-key }}"

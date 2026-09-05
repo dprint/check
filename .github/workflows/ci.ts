@@ -94,6 +94,7 @@ const cachePrimeCheck = step({
   uses: "./",
   continueOnError: true,
   with: { cache: true, "config-path": cacheTestConfig },
+  outputs: ["cache-changed"] as const,
 });
 
 const cachePrimeJob = job("cache-prime", {
@@ -107,8 +108,12 @@ const cachePrimeJob = job("cache-prime", {
     },
     cachePrimeCheck,
     {
-      name: "Verify the check failed",
-      run: `test "${expr("steps.check.outcome")}" = "failure"`,
+      name: "Verify the check failed and the cache was saved",
+      env: { CACHE_CHANGED: cachePrimeCheck.outputs["cache-changed"] },
+      run: [
+        `test "${expr("steps.check.outcome")}" = "failure"`,
+        `test "$CACHE_CHANGED" = "true"`,
+      ],
     },
   ),
 });
@@ -118,7 +123,7 @@ const cacheHitCheck = step({
   id: "check",
   uses: "./",
   with: { cache: true, "config-path": cacheTestConfig },
-  outputs: ["cache-matched-key"] as const,
+  outputs: ["cache-matched-key", "cache-changed"] as const,
 });
 
 const cacheHitJob = job("cache-hit", {
@@ -133,9 +138,10 @@ const cacheHitJob = job("cache-hit", {
     },
     cacheHitCheck,
     {
-      name: "Verify the cache saved by the failed cache-prime job was restored",
+      name: "Verify the cache saved by the failed cache-prime job was restored and not saved again",
       env: {
         MATCHED_KEY: cacheHitCheck.outputs["cache-matched-key"],
+        CACHE_CHANGED: cacheHitCheck.outputs["cache-changed"],
         EXPECTED_KEY: concat(
           "dprint-cache-",
           expr("runner.os"),
@@ -153,6 +159,8 @@ const cacheHitJob = job("cache-hit", {
         `echo "matched key: $MATCHED_KEY"`,
         `echo "expected:    $EXPECTED_KEY"`,
         `test "$MATCHED_KEY" = "$EXPECTED_KEY"`,
+        // nothing new was checked, so the restored cache is left as-is
+        `test "$CACHE_CHANGED" = "false"`,
       ],
     },
   ),
@@ -169,6 +177,9 @@ const lintJob = job("lint", {
     step({
       name: "Lint generated files",
       run: [
+        // deno run doesn't type check, so a type error in a generator script
+        // would silently produce bad yaml
+        "deno check .github/workflows/*.ts",
         "./.github/workflows/ci.ts --lint",
         "./.github/workflows/action.ts --lint",
       ],

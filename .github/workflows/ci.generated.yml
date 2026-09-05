@@ -88,8 +88,12 @@ jobs:
         with:
           cache: true
           config-path: cache-test.json
-      - name: Verify the check failed
-        run: 'test "${{ steps.check.outcome }}" = "failure"'
+      - name: Verify the check failed and the cache was saved
+        env:
+          CACHE_CHANGED: "${{ steps.check.outputs.cache-changed }}"
+        run: |-
+          test "${{ steps.check.outcome }}" = "failure"
+          test "$CACHE_CHANGED" = "true"
   cache-hit:
     needs:
       - cache-prime
@@ -121,14 +125,16 @@ jobs:
         with:
           cache: true
           config-path: cache-test.json
-      - name: Verify the cache saved by the failed cache-prime job was restored
+      - name: Verify the cache saved by the failed cache-prime job was restored and not saved again
         env:
           MATCHED_KEY: "${{ steps.check.outputs.cache-matched-key }}"
+          CACHE_CHANGED: "${{ steps.check.outputs.cache-changed }}"
           EXPECTED_KEY: 'dprint-cache-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles(''cache-test.json'') }}-cache-prime-${{ github.run_id }}-${{ github.run_attempt }}'
         run: |-
           echo "matched key: $MATCHED_KEY"
           echo "expected:    $EXPECTED_KEY"
           test "$MATCHED_KEY" = "$EXPECTED_KEY"
+          test "$CACHE_CHANGED" = "false"
   lint:
     runs-on: ubuntu-latest
     steps:
@@ -136,5 +142,6 @@ jobs:
       - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2
       - name: Lint generated files
         run: |-
+          deno check .github/workflows/*.ts
           ./.github/workflows/ci.ts --lint
           ./.github/workflows/action.ts --lint

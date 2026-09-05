@@ -92,26 +92,76 @@ const restoreCache = step({
   outputs: ["cache-hit", "cache-primary-key", "cache-matched-key"] as const,
 }).dependsOn(prepareCache);
 
+// hashes the contents of the cache directory before and after the check so
+// the save can be skipped when the check didn't change anything
+const hashCacheDir = [
+  `hash_cache_dir() {`,
+  `  if [ ! -d "$DPRINT_CACHE_DIR" ]; then`,
+  `    echo "missing"`,
+  `    return`,
+  `  fi`,
+  `  cd "$DPRINT_CACHE_DIR"`,
+  `  # the locks directory changes on every run`,
+  `  local files`,
+  `  files=$(find . -type f -not -path "./locks/*" | LC_ALL=C sort)`,
+  `  if [ -z "$files" ]; then`,
+  `    echo "empty"`,
+  `    return`,
+  `  fi`,
+  `  { echo "$files"; echo "$files" | xargs git hash-object; } | git hash-object --stdin`,
+  `}`,
+];
+const hashCacheBefore = step({
+  name: "Hash dprint cache before check",
+  id: "cache-before",
+  if: cacheEnabled,
+  run: [
+    ...hashCacheDir,
+    `echo "hash=$(hash_cache_dir)" >> "$GITHUB_OUTPUT"`,
+  ],
+  outputs: ["hash"] as const,
+}).dependsOn(restoreCache);
+
 const check = step({
   name: "Check formatting",
   env: { CONFIG_PATH: configPath },
   run: `~/.dprint/bin/dprint check \${CONFIG_PATH:+--config "$CONFIG_PATH"} ${inputs.args}`,
-}).dependsOn(install).comesAfter(restoreCache);
+}).dependsOn(install).comesAfter(hashCacheBefore);
 
-// save even when the check fails so the compiled plugins and the incremental
-// state of the correctly formatted files carry over
+// runs even when the check fails so the compiled plugins and the incremental
+// state of the correctly formatted files can still be saved
+const hashCacheAfter = step({
+  name: "Check if dprint cache changed",
+  id: "cache-after",
+  if: conditions.status.always().and(cacheEnabled),
+  env: { HASH_BEFORE: hashCacheBefore.outputs.hash },
+  run: [
+    ...hashCacheDir,
+    `hash_after=$(hash_cache_dir)`,
+    `echo "before: $HASH_BEFORE"`,
+    `echo "after:  $hash_after"`,
+    `if [ "$hash_after" = "$HASH_BEFORE" ]; then`,
+    `  echo "changed=false" >> "$GITHUB_OUTPUT"`,
+    `else`,
+    `  echo "changed=true" >> "$GITHUB_OUTPUT"`,
+    `fi`,
+  ],
+  outputs: ["changed"] as const,
+}).comesAfter(check);
+
 const saveCache = step({
   name: "Save dprint cache",
   if: conditions.status.always()
     .and(cacheEnabled)
     .and(restoreCache.outputs["cache-primary-key"].notEquals(""))
-    .and(restoreCache.outputs["cache-hit"].notEquals("true")),
+    .and(restoreCache.outputs["cache-hit"].notEquals("true"))
+    .and(hashCacheAfter.outputs.changed.equals("true")),
   uses: "actions/cache/save@v5",
   with: {
     path: cacheDir,
     key: restoreCache.outputs["cache-primary-key"],
   },
-}).comesAfter(check);
+}).comesAfter(hashCacheAfter);
 
 action({
   name: "dprint-check-action",
@@ -123,9 +173,13 @@ action({
       description: "Key of the cache entry that was restored, if any",
       value: restoreCache.outputs["cache-matched-key"],
     },
+    "cache-changed": {
+      description: "Whether the check changed the cache and so a new cache entry was saved",
+      value: hashCacheAfter.outputs.changed,
+    },
   },
   defaults: { run: { shell: "bash" } },
-  steps: [install, restoreCache, check, saveCache],
+  steps: [install, restoreCache, hashCacheBefore, check, hashCacheAfter, saveCache],
   branding: { icon: "check-circle", color: "gray-dark" },
 }).writeOrLint({
   filePath: new URL("../../action.yml", import.meta.url),

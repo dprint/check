@@ -3,7 +3,7 @@
   "specifiers": {
     "jsr:@david/console-static-text@~0.3.4": "0.3.4",
     "jsr:@david/dax@0.50": "0.50.0",
-    "jsr:@david/gagen@0.7": "0.7.0",
+    "jsr:@david/gagen@~0.7.1": "0.7.1",
     "jsr:@david/path@~0.3.2": "0.3.3",
     "jsr:@david/path@~0.3.3": "0.3.3",
     "jsr:@david/shell@0.7": "0.7.0",
@@ -28,8 +28,8 @@
         "jsr:@david/shell"
       ]
     },
-    "@david/gagen@0.7.0": {
-      "integrity": "5f1a853fffc7ce0546cd2159d36708774b66a72da07b400599dcd7e7d712cf3c",
+    "@david/gagen@0.7.1": {
+      "integrity": "8de73aa16a33fa046a90a8838ab3f03dd55245958a68d89058657d593d7c8293",
       "dependencies": [
         "jsr:@std/yaml"
       ]
@@ -82,7 +82,7 @@
   "workspace": {
     "dependencies": [
       "jsr:@david/dax@0.50",
-      "jsr:@david/gagen@0.7"
+      "jsr:@david/gagen@~0.7.1"
     ]
   }
 }
