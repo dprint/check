@@ -28,6 +28,14 @@ If you are using a matrix, most likely you will only want to run it only on Linu
 
 By default, `dprint/check` uses the latest version of dprint.
 
+The dprint executable is downloaded from the [GitHub release](https://github.com/dprint/dprint/releases) and its [build provenance attestation](https://docs.github.com/en/actions/security-for-github-actions/using-artifact-attestations/using-artifact-attestations-to-establish-provenance-for-builds) is verified with `gh attestation verify` before it runs (dprint 0.57.1 and later have attestations). This takes a few seconds; to skip it:
+
+```yml
+- uses: dprint/check@v2.4
+  with:
+    verify-attestation: false
+```
+
 ### Specific Version
 
 To use a specific version, specify that with the `dprint-version` input:
