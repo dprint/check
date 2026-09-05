@@ -17,6 +17,14 @@ jobs:
       - uses: dprint/check@v2.3
 ```
 
+It's recommended to enable [caching](#caching) (v2.4+), which speeds up the check by not downloading and compiling the plugins on every run and by only checking the files that changed since the last run:
+
+```yml
+- uses: dprint/check@v2.4
+  with:
+    cache: true
+```
+
 If you are using a matrix, most likely you will only want to run it only on Linux. For example:
 
 ```yml
