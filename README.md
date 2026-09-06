@@ -1,58 +1,63 @@
 # dprint check action
 
-This action runs `dprint check` on your source code and fails the build if something is not properly formatted.
+This action runs `dprint check` on your source code and fails if something is not properly formatted.
 
 ## Usage
 
 1. Checkout your repo.
 2. Run `dprint/check` action.
 
-```yml
-jobs:
-  style:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
+   ```yml
+   jobs:
+     style:
+       runs-on: ubuntu-latest
+       steps:
+         - uses: actions/checkout@v7
+         - uses: dprint/check@v2
+           with:
+             cache: true
+   ```
 
-      - uses: dprint/check@v2.3
-```
-
-It's recommended to enable [caching](#caching) (v2.4+), which speeds up the check by not downloading and compiling the plugins on every run and by only checking the files that changed since the last run:
-
-```yml
-- uses: dprint/check@v2.4
-  with:
-    cache: true
-```
+It's recommended to enable [caching](#caching), which speeds up the check by not downloading and compiling the plugins on every run and by only checking the files that changed since the last run.
 
 If you are using a matrix, most likely you will only want to run it only on Linux. For example:
 
 ```yml
-- uses: dprint/check@v2.3
+- uses: dprint/check@v2
   if: runner.os == 'Linux'
+  with:
+    cache: true
 ```
 
 ### Latest Version
 
 By default, `dprint/check` uses the latest version of dprint.
 
-The dprint executable is downloaded from the [GitHub release](https://github.com/dprint/dprint/releases) and its [build provenance attestation](https://docs.github.com/en/actions/security-for-github-actions/using-artifact-attestations/using-artifact-attestations-to-establish-provenance-for-builds) is verified with `gh attestation verify` before it runs (dprint 0.57.1 and later have attestations). This takes a few seconds; to skip it:
+The dprint executable is downloaded from the [GitHub release](https://github.com/dprint/dprint/releases) and its [build provenance attestation](https://docs.github.com/en/actions/security-for-github-actions/using-artifact-attestations/using-artifact-attestations-to-establish-provenance-for-builds) is verified with `gh attestation verify` before it runs (dprint 0.57.1 and later have attestations).
+
+This takes a few seconds. If that's a concern, use `cache: true` so the verified download is reused across runs.
+
+<details>
+<summary>Disabling verification (not recommended)</summary>
+
+Skipping verification means the downloaded executable is not checked against dprint's build provenance, so prefer `cache: true` instead. If you still need to disable it:
 
 ```yml
-- uses: dprint/check@v2.4
+- uses: dprint/check@v2
   with:
-    # if you're doing this for perf reasons, consider `cache: true` instead
     verify-attestation: false
 ```
+
+</details>
 
 ### Specific Version
 
 To use a specific version, specify that with the `dprint-version` input:
 
 ```yml
-- uses: dprint/check@v2.3
+- uses: dprint/check@v2
   with:
-    dprint-version: 0.30.3
+    dprint-version: 0.57.4
 ```
 
 ### Config Path
@@ -64,48 +69,39 @@ By default, `dprint/check` uses the auto-discovered configuration file.
 To use a specific config, specify that with the `config-path` input:
 
 ```yml
-- uses: dprint/check@v2.3
+- uses: dprint/check@v2
   with:
     config-path: dprint-ci.json
 ```
 
 ### Args
 
-To pass additional arguments to `dprint check`, pass them to the `args` input. E.g. to only check changed files:
+To pass additional arguments to `dprint check`, pass them to the `args` input.
 
 ```yml
-- name: Get changed files
-  id: changed-files
-  uses: tj-actions/changed-files@v45
-- uses: dprint/check@v2.3
+- uses: dprint/check@v2
   with:
-    args: >-
-      --allow-no-files
-      ${{ steps.changed-files.outputs.all_changed_files }}
+    args: --diff-format unified
 ```
 
 ### Annotations
-
-> Available in v2.4+
 
 When a file isn't formatted, the action emits an error annotation for it, which GitHub shows on the pull request's changed files and in the check summary. The annotation points at the first change and includes the diff. This requires dprint 0.57 or later and `node` on the path (always the case on GitHub-hosted runners); otherwise the action only outputs the diffs to the log. Note that GitHub shows at most 10 error annotations per step, so the log is the complete list.
 
 To disable annotations:
 
 ```yml
-- uses: dprint/check@v2.4
+- uses: dprint/check@v2
   with:
     annotations: false
 ```
 
 ### Caching
 
-> Available in v2.4+
-
 Set the `cache` input to `true` to store dprint's cache directory in the GitHub Actions cache between runs:
 
 ```yml
-- uses: dprint/check@v2.4
+- uses: dprint/check@v2
   with:
     cache: true
 ```
@@ -115,10 +111,6 @@ This caches:
 - The downloaded and compiled plugins, so they don't need to be downloaded and compiled on every run.
 - The [incremental](https://dprint.dev/cli/#incremental) state, so `dprint check` only checks files that changed since the last run that saw them.
 - The verified download of the dprint executable, per version, so the attestation verification can be skipped when the cached download matches the release's digest.
-
-dprint validates the restored cache itself, so it is safe to restore the cache from a run with a different dprint version or configuration. A run saves a new cache entry when the check changed the cache (ex. a plugin was compiled or a file was checked for the first time) and the next run restores the closest match: a previous run of the same job with the same configuration files, then any job with the same configuration files, then any run on the same platform.
-
-The action sets the `DPRINT_CACHE_DIR` environment variable for the rest of the job, so a later step that runs dprint (ex. `dprint fmt`) uses the same cache. If you set `DPRINT_CACHE_DIR` yourself, set it before this action runs so the action caches that directory instead.
 
 ## Outputs
 
@@ -140,7 +132,7 @@ from D:\a\check\check\README.md:
 --
 ```
 
-This is because unfortunately git is configured in GH actions to check out line endings as CRLF (`\r\n`).
+This is because git is unfortunately configured in GH actions to check out line endings as CRLF (`\r\n`).
 
 You can fix this by only running the action on Linux as shown above (recommended), or to do the following before checking out the repo:
 
