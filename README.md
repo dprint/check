@@ -12,9 +12,17 @@ jobs:
   style:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: dprint/check@v2.3
+```
+
+It's recommended to enable [caching](#caching) (v2.4+), which speeds up the check by not downloading and compiling the plugins on every run and by only checking the files that changed since the last run:
+
+```yml
+- uses: dprint/check@v2.4
+  with:
+    cache: true
 ```
 
 If you are using a matrix, most likely you will only want to run it only on Linux. For example:
@@ -33,6 +41,7 @@ The dprint executable is downloaded from the [GitHub release](https://github.com
 ```yml
 - uses: dprint/check@v2.4
   with:
+    # if you're doing this for perf reasons, consider `cache: true` instead
     verify-attestation: false
 ```
 
@@ -105,10 +114,19 @@ This caches:
 
 - The downloaded and compiled plugins, so they don't need to be downloaded and compiled on every run.
 - The [incremental](https://dprint.dev/cli/#incremental) state, so `dprint check` only checks files that changed since the last run that saw them.
+- The verified download of the dprint executable, per version, so the attestation verification can be skipped when the cached download matches the release's digest.
 
 dprint validates the restored cache itself, so it is safe to restore the cache from a run with a different dprint version or configuration. A run saves a new cache entry when the check changed the cache (ex. a plugin was compiled or a file was checked for the first time) and the next run restores the closest match: a previous run of the same job with the same configuration files, then any job with the same configuration files, then any run on the same platform.
 
 The action sets the `DPRINT_CACHE_DIR` environment variable for the rest of the job, so a later step that runs dprint (ex. `dprint fmt`) uses the same cache. If you set `DPRINT_CACHE_DIR` yourself, set it before this action runs so the action caches that directory instead.
+
+## Outputs
+
+| Output              | Description                                                            |
+| ------------------- | ---------------------------------------------------------------------- |
+| `dprint-version`    | The version of dprint that was installed                               |
+| `cache-matched-key` | Key of the cache entry that was restored, if any                       |
+| `cache-changed`     | Whether the check changed the cache and so a new cache entry was saved |
 
 ## Troubleshooting
 
@@ -132,5 +150,5 @@ You can fix this by only running the action on Linux as shown above (recommended
     git config --global core.autocrlf false
     git config --global core.eol lf
 
-- uses: actions/checkout@v4
+- uses: actions/checkout@v7
 ```

@@ -32,6 +32,21 @@ const checkoutWithLf = step({
 
 // === style job ===
 
+const specificVersionCheck = step({
+  name: "Check formatting specific version",
+  id: "specific-version",
+  uses: "./",
+  with: { "dprint-version": "0.57.1" },
+  outputs: ["dprint-version"] as const,
+});
+const unattestedVersionCheck = step({
+  name: "Check formatting with an unattested version",
+  id: "unattested-version",
+  uses: "./",
+  with: { "dprint-version": "0.56.1", "config-path": "tests/legacy/dprint.json" },
+  outputs: ["dprint-version"] as const,
+});
+
 const styleJob = job("style", {
   runsOn: matrix.os,
   strategy: { matrix },
@@ -41,10 +56,11 @@ const styleJob = job("style", {
       name: "Check formatting latest",
       uses: "./",
     },
+    specificVersionCheck,
     {
-      name: "Check formatting specific version",
-      uses: "./",
-      with: { "dprint-version": "0.57.1" },
+      name: "Verify the specific version was installed",
+      env: { VERSION: specificVersionCheck.outputs["dprint-version"] },
+      run: `test "$VERSION" = "0.57.1"`,
     },
     {
       name: "Check formatting specific config",
@@ -67,6 +83,25 @@ const styleJob = job("style", {
       with: { cache: true, "dprint-version": "0.57.1" },
     },
     {
+      name: "Check formatting without attestation verification",
+      uses: "./",
+      with: { "verify-attestation": false },
+    },
+    {
+      name: "Check formatting without annotations",
+      uses: "./",
+      with: { annotations: false },
+    },
+    // a version from before attestations, so the download can't be verified and
+    // the action warns instead; it predates npm plugin specifiers too, so it
+    // checks a config with an https plugin
+    unattestedVersionCheck,
+    {
+      name: "Verify the unattested version was installed",
+      env: { VERSION: unattestedVersionCheck.outputs["dprint-version"] },
+      run: `test "$VERSION" = "0.56.1"`,
+    },
+    {
       name: "Make poorly-formatted json file",
       run: createPoorlyFormattedFile,
     },
@@ -86,18 +121,30 @@ const styleJob = job("style", {
   ),
 });
 
-// === cache jobs ===
+// === cache job ===
 
+// both runs happen in one job so they share a runner: a second job could land
+// on a runner with different cpu features, which would compile its own plugin
+// variants and change the cache, and re-running only failed jobs would lose the
+// entry the first run saved
 const cachePrimeCheck = step({
   name: "Check formatting (expected to fail)",
-  id: "check",
+  id: "prime",
   uses: "./",
   continueOnError: true,
   with: { cache: true, "config-path": cacheTestConfig },
   outputs: ["cache-changed"] as const,
 });
 
-const cachePrimeJob = job("cache-prime", {
+const cacheHitCheck = step({
+  name: "Check formatting again",
+  id: "hit",
+  uses: "./",
+  with: { cache: true, "config-path": cacheTestConfig },
+  outputs: ["cache-matched-key", "cache-changed"] as const,
+});
+
+const cacheJob = job("cache", {
   runsOn: matrix.os,
   strategy: { matrix },
   defaults: { run: { shell: "bash" } },
@@ -111,34 +158,17 @@ const cachePrimeJob = job("cache-prime", {
       name: "Verify the check failed and the cache was saved",
       env: { CACHE_CHANGED: cachePrimeCheck.outputs["cache-changed"] },
       run: [
-        `test "${expr("steps.check.outcome")}" = "failure"`,
+        `test "${expr("steps.prime.outcome")}" = "failure"`,
         `test "$CACHE_CHANGED" = "true"`,
       ],
     },
-  ),
-});
-
-const cacheHitCheck = step({
-  name: "Check formatting",
-  id: "check",
-  uses: "./",
-  with: { cache: true, "config-path": cacheTestConfig },
-  outputs: ["cache-matched-key", "cache-changed"] as const,
-});
-
-const cacheHitJob = job("cache-hit", {
-  runsOn: matrix.os,
-  strategy: { matrix },
-  needs: [cachePrimeJob],
-  defaults: { run: { shell: "bash" } },
-  steps: step.dependsOn(checkoutWithLf)(
     {
-      name: "Recreate unique config",
-      run: createCacheTestConfig,
+      name: "Remove the poorly-formatted file",
+      run: "rm poorly-formatted.json",
     },
     cacheHitCheck,
     {
-      name: "Verify the cache saved by the failed cache-prime job was restored and not saved again",
+      name: "Verify the cache saved by the failed check was restored and not saved again",
       env: {
         MATCHED_KEY: cacheHitCheck.outputs["cache-matched-key"],
         CACHE_CHANGED: cacheHitCheck.outputs["cache-changed"],
@@ -150,7 +180,7 @@ const cacheHitJob = job("cache-hit", {
           "-",
           hashFiles(cacheTestConfig),
           "-",
-          cachePrimeJob.id,
+          expr("github.job"),
           "-",
           runUniqueId,
         ),
@@ -198,8 +228,7 @@ workflow({
   on: ["push", "pull_request"],
   jobs: [
     styleJob,
-    cachePrimeJob,
-    cacheHitJob,
+    cacheJob,
     lintJob,
   ],
 }).writeOrLint({
