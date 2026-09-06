@@ -20,7 +20,7 @@ This action runs `dprint check` on your source code and fails if something is no
 
 It's recommended to enable [caching](#caching), which speeds up the check by not downloading and compiling the plugins on every run and by only checking the files that changed since the last run.
 
-If you are using a matrix, most likely you will only want to run it only on Linux. For example:
+If you are using a matrix, most likely you will only want to run it on Linux. For example:
 
 ```yml
 - uses: dprint/check@v2
@@ -64,8 +64,6 @@ To use a specific version, specify that with the `dprint-version` input:
 
 By default, `dprint/check` uses the auto-discovered configuration file.
 
-### Specific Config
-
 To use a specific config, specify that with the `config-path` input:
 
 ```yml
@@ -81,7 +79,7 @@ To pass additional arguments to `dprint check`, pass them to the `args` input.
 ```yml
 - uses: dprint/check@v2
   with:
-    args: --diff-format unified
+    args: --fail-fast
 ```
 
 ### Annotations
