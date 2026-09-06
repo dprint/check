@@ -7,16 +7,16 @@ This action runs `dprint check` on your source code and fails if something is no
 1. Checkout your repo.
 2. Run `dprint/check` action.
 
-   ```yml
-   jobs:
-     style:
-       runs-on: ubuntu-latest
-       steps:
-         - uses: actions/checkout@v7
-         - uses: dprint/check@v2
-           with:
-             cache: true
-   ```
+```yml
+jobs:
+  style:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dprint/check@v2
+        with:
+          cache: true
+```
 
 It's recommended to enable [caching](#caching), which speeds up the check by not downloading and compiling the plugins on every run and by only checking the files that changed since the last run.
 
