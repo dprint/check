@@ -33,9 +33,7 @@ If you are using a matrix, most likely you will only want to run it on Linux. Fo
 
 By default, `dprint/check` uses the latest version of dprint.
 
-The dprint executable is downloaded from the [GitHub release](https://github.com/dprint/dprint/releases) and its [build provenance attestation](https://docs.github.com/en/actions/security-for-github-actions/using-artifact-attestations/using-artifact-attestations-to-establish-provenance-for-builds) is verified with `gh attestation verify` before it runs (dprint 0.57.1 and later have attestations).
-
-This takes a few seconds. If that's a concern, use `cache: true` so the verified download is reused across runs.
+The dprint executable is downloaded from the [GitHub release](https://github.com/dprint/dprint/releases) and its [build provenance attestation](https://docs.github.com/en/actions/security-for-github-actions/using-artifact-attestations/using-artifact-attestations-to-establish-provenance-for-builds) is verified with `gh attestation verify` before it runs (dprint 0.57.1 and later have attestations). This takes a few seconds. If that's a concern, use `cache: true` so the verified download is reused across runs.
 
 <details>
 <summary>Disabling verification (not recommended)</summary>
