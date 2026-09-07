@@ -5,7 +5,9 @@
 import fs from "node:fs";
 import path from "node:path";
 
-const MAX_ANNOTATION_MESSAGE_LENGTH = 4000;
+// the full diff is in the log, so keep the annotation short
+const MAX_ANNOTATION_DIFF_LINES = 10;
+const MAX_ANNOTATION_DIFF_LENGTH = 4000;
 const LINE_ENDINGS_MESSAGE = "Text differed by line endings.";
 const WINDOWS_LINE_ENDINGS_HINT =
   "Git on Windows runners checks out files with CRLF line endings, so consider only running this action on Linux: https://github.com/dprint/check#windows-line-endings";
@@ -76,7 +78,7 @@ function annotation(relativePath, changes, lineEndings) {
   } else if (changes != null && changes.length > 0) {
     // the annotation is shown beside the file, so the surrounding lines are
     // already visible and only the changed lines are worth repeating
-    message += "\n\n" + truncate(makePrintable(changes.map(formatChange).join("\n")), MAX_ANNOTATION_MESSAGE_LENGTH);
+    message += "\n\n" + makePrintable(formatChanges(changes));
   }
   return `::error ${propertiesText}::${escapeMessage(message)}`;
 }
@@ -96,12 +98,39 @@ function changeRange(change) {
   return { line: change.oldStart, endLine: change.oldStart + change.oldCount - 1 };
 }
 
-/** Formats a change as a unified diff hunk without context lines, like `diff -U0` does. */
+/**
+ * Formats the changes as unified diff hunks without context lines, like
+ * `diff -U0` does, stopping once the annotation would get too long.
+ */
+function formatChanges(changes) {
+  const lines = [];
+  let truncated = false;
+  for (const change of changes) {
+    const changeLines = formatChange(change);
+    if (lines.length + changeLines.length > MAX_ANNOTATION_DIFF_LINES) {
+      truncated = true;
+      // stop at a change boundary so a removal isn't shown without its
+      // replacement, unless the first change is too long on its own
+      if (lines.length === 0) {
+        lines.push(...changeLines.slice(0, MAX_ANNOTATION_DIFF_LINES));
+      }
+      break;
+    }
+    lines.push(...changeLines);
+  }
+  let text = lines.join("\n");
+  if (text.length > MAX_ANNOTATION_DIFF_LENGTH) {
+    truncated = true;
+    text = text.slice(0, MAX_ANNOTATION_DIFF_LENGTH);
+  }
+  return truncated ? `${text}\n(truncated, see the log for the full diff)` : text;
+}
+
 function formatChange(change) {
   const header = `@@ -${hunkRange(change.oldStart, change.oldCount)} +${
     hunkRange(change.newStart, change.newCount)
   } @@`;
-  return [header, ...change.lines].join("\n");
+  return [header, ...change.lines];
 }
 
 function hunkRange(start, count) {
@@ -210,10 +239,6 @@ function toRelativePath(filePath, workspace) {
 /** Makes carriage returns visible so a line ending difference is readable. */
 function makePrintable(text) {
   return text.replaceAll("\r", "\\r").trimEnd();
-}
-
-function truncate(text, maxLength) {
-  return text.length <= maxLength ? text : `${text.slice(0, maxLength)}\n(truncated)`;
 }
 
 function escapeProperty(value) {

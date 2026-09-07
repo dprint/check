@@ -92,6 +92,34 @@ Deno.test("annotates only the changed lines since the surrounding lines are alre
   }
 });
 
+Deno.test("truncates a long diff since the full diff is in the log", async () => {
+  const workspace = await Deno.makeTempDir();
+  try {
+    const result = await runAnnotate(workspace, [{
+      // stops at a change boundary so a removal isn't shown without its replacement
+      file: `${workspace}/two-changes.md`,
+      diff:
+        "--- original\n+++ formatted\n@@ -1,12 +1,12 @@\n-a \n-b \n-c \n+a\n+b\n+c\n d\n e\n f\n-g \n-h \n-i \n+g\n+h\n+i\n",
+    }, {
+      // a change that's too long on its own is cut short
+      file: `${workspace}/one-change.md`,
+      diff: "--- original\n+++ formatted\n@@ -1,6 +1,6 @@\n-a \n-b \n-c \n-d \n-e \n-f \n+a\n+b\n+c\n+d\n+e\n+f\n",
+    }]);
+    assertEquals(result.stderr, "");
+    assertEquals(result.code, 0);
+    assertStringIncludes(
+      result.stdout,
+      "::error file=two-changes.md,line=1,title=dprint,endLine=3::File is not formatted. Run `dprint fmt` to fix.%0A%0A@@ -1,3 +1,3 @@%0A-a %0A-b %0A-c %0A+a%0A+b%0A+c%0A(truncated, see the log for the full diff)\n",
+    );
+    assertStringIncludes(
+      result.stdout,
+      "::error file=one-change.md,line=1,title=dprint,endLine=6::File is not formatted. Run `dprint fmt` to fix.%0A%0A@@ -1,6 +1,6 @@%0A-a %0A-b %0A-c %0A-d %0A-e %0A-f %0A+a%0A+b%0A+c%0A(truncated, see the log for the full diff)\n",
+    );
+  } finally {
+    await Deno.remove(workspace, { recursive: true });
+  }
+});
+
 Deno.test("makes carriage returns visible and escapes the annotation", async () => {
   const workspace = await Deno.makeTempDir();
   try {
