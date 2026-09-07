@@ -5,9 +5,11 @@
 import fs from "node:fs";
 import path from "node:path";
 
+// github shows at most this many error annotations per step
+const MAX_ANNOTATIONS = 10;
 // the full diff is in the log, so keep the annotation short
 const MAX_ANNOTATION_DIFF_LINES = 10;
-const MAX_ANNOTATION_DIFF_LENGTH = 4000;
+const MAX_ANNOTATION_MESSAGE_LENGTH = 4000;
 const LINE_ENDINGS_MESSAGE = "Text differed by line endings.";
 const WINDOWS_LINE_ENDINGS_HINT =
   "Git on Windows runners checks out files with CRLF line endings, so consider only running this action on Linux: https://github.com/dprint/check#windows-line-endings";
@@ -32,7 +34,10 @@ const entries = fs.readFileSync(jsonlPath, "utf8")
     }
   });
 
-for (const entry of entries) {
+// github ignores the annotations past its limit, so when there are too many
+// files the last annotation lists the ones that wouldn't be shown instead
+const annotatedCount = entries.length > MAX_ANNOTATIONS ? MAX_ANNOTATIONS - 1 : entries.length;
+entries.forEach((entry, index) => {
   const relativePath = toRelativePath(entry.file, workspace);
   const changes = entry.diff == null ? undefined : parseChanges(entry.diff);
   // a diff that only changes line endings is every line of the file, so
@@ -41,7 +46,13 @@ for (const entry of entries) {
   console.log(`from ${relativePath}:`);
   console.log(describeDiff(entry.diff, lineEndings));
   console.log("--");
-  console.log(annotation(relativePath, changes, lineEndings));
+  if (index < annotatedCount) {
+    console.log(annotation(relativePath, changes, lineEndings));
+  }
+});
+if (annotatedCount < entries.length) {
+  const remainingPaths = entries.slice(annotatedCount).map((entry) => toRelativePath(entry.file, workspace));
+  console.log(remainingFilesAnnotation(remainingPaths));
 }
 
 if (entries.length > 0) {
@@ -118,12 +129,26 @@ function formatChanges(changes) {
     }
     lines.push(...changeLines);
   }
-  let text = lines.join("\n");
-  if (text.length > MAX_ANNOTATION_DIFF_LENGTH) {
-    truncated = true;
-    text = text.slice(0, MAX_ANNOTATION_DIFF_LENGTH);
+  const text = lines.join("\n");
+  if (text.length > MAX_ANNOTATION_MESSAGE_LENGTH) {
+    return truncatedMessage(text.slice(0, MAX_ANNOTATION_MESSAGE_LENGTH), "diff");
   }
-  return truncated ? `${text}\n(truncated, see the log for the full diff)` : text;
+  return truncated ? truncatedMessage(text, "diff") : text;
+}
+
+/** Builds the `::error` workflow command listing the files GitHub's annotation limit would otherwise hide. */
+function remainingFilesAnnotation(relativePaths) {
+  const message = `${relativePaths.length} more files are not formatted. Run \`dprint fmt\` to fix.\n\n${
+    relativePaths.join("\n")
+  }`;
+  const truncated = message.length > MAX_ANNOTATION_MESSAGE_LENGTH
+    ? truncatedMessage(message.slice(0, MAX_ANNOTATION_MESSAGE_LENGTH), "list")
+    : message;
+  return `::error title=dprint::${escapeMessage(truncated)}`;
+}
+
+function truncatedMessage(text, whatWasTruncated) {
+  return `${text}\n(truncated, see the log for the full ${whatWasTruncated})`;
 }
 
 function formatChange(change) {

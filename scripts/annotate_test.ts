@@ -120,6 +120,38 @@ Deno.test("truncates a long diff since the full diff is in the log", async () =>
   }
 });
 
+Deno.test("lists the remaining files in the last annotation when there are more than github shows", async () => {
+  const workspace = await Deno.makeTempDir();
+  const fileEntries = (count: number) =>
+    Array.from({ length: count }, (_, i) => ({
+      file: `${workspace}/file${i + 1}.json`,
+      diff: "--- original\n+++ formatted\n@@ -1 +1 @@\n-{\"a\":1}\n+{ \"a\": 1 }\n",
+    }));
+  const countAnnotations = (stdout: string) => stdout.split("\n").filter((line) => line.startsWith("::error ")).length;
+  try {
+    const tooMany = await runAnnotate(workspace, fileEntries(12));
+    assertEquals(tooMany.stderr, "");
+    assertEquals(tooMany.code, 0);
+    assertEquals(countAnnotations(tooMany.stdout), 10);
+    assertStringIncludes(tooMany.stdout, "::error file=file9.json,line=1,title=dprint::");
+    assertEquals(tooMany.stdout.includes("::error file=file10.json"), false);
+    assertStringIncludes(
+      tooMany.stdout,
+      "::error title=dprint::3 more files are not formatted. Run `dprint fmt` to fix.%0A%0Afile10.json%0Afile11.json%0Afile12.json\n"
+        + "Found 12 not formatted files. Run dprint fmt to fix.\n",
+    );
+
+    // the limit itself still annotates every file
+    const atLimit = await runAnnotate(workspace, fileEntries(10));
+    assertEquals(atLimit.code, 0);
+    assertEquals(countAnnotations(atLimit.stdout), 10);
+    assertStringIncludes(atLimit.stdout, "::error file=file10.json,line=1,title=dprint::");
+    assertEquals(atLimit.stdout.includes("more files are not formatted"), false);
+  } finally {
+    await Deno.remove(workspace, { recursive: true });
+  }
+});
+
 Deno.test("makes carriage returns visible and escapes the annotation", async () => {
   const workspace = await Deno.makeTempDir();
   try {
