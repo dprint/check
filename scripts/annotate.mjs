@@ -32,13 +32,14 @@ const entries = fs.readFileSync(jsonlPath, "utf8")
 
 for (const entry of entries) {
   const relativePath = toRelativePath(entry.file, workspace);
+  const changes = entry.diff == null ? undefined : parseChanges(entry.diff);
   // a diff that only changes line endings is every line of the file, so
   // summarize it like dprint's default output does
-  const lineEndings = entry.diff == null ? undefined : getLineEndingsOnlyChange(entry.diff);
+  const lineEndings = changes == null ? undefined : getLineEndingsOnlyChange(changes);
   console.log(`from ${relativePath}:`);
   console.log(describeDiff(entry.diff, lineEndings));
   console.log("--");
-  console.log(annotation(relativePath, entry.diff, lineEndings));
+  console.log(annotation(relativePath, changes, lineEndings));
 }
 
 if (entries.length > 0) {
@@ -55,10 +56,10 @@ function describeDiff(diff, lineEndings) {
 }
 
 /** Builds the `::error` workflow command for a file that isn't formatted. */
-function annotation(relativePath, diff, lineEndings) {
+function annotation(relativePath, changes, lineEndings) {
   // the whole file differs when only the line endings do, so point at the top
   // of it rather than highlighting every line
-  const range = lineEndings != null ? { line: 1, endLine: 1 } : firstHunkRange(diff);
+  const range = changes == null || lineEndings != null ? { line: 1, endLine: 1 } : changeRange(changes[0]);
   const properties = { file: relativePath, line: range.line, title: "dprint" };
   if (range.endLine !== range.line) {
     properties.endLine = range.endLine;
@@ -72,77 +73,138 @@ function annotation(relativePath, diff, lineEndings) {
     if (lineEndings.original === "crlf" && process.env.RUNNER_OS === "Windows") {
       message += " " + WINDOWS_LINE_ENDINGS_HINT;
     }
-  } else if (diff != null) {
-    message += "\n" + truncate(makePrintable(stripDiffHeader(diff)), MAX_ANNOTATION_MESSAGE_LENGTH);
+  } else if (changes != null && changes.length > 0) {
+    // the annotation is shown beside the file, so the surrounding lines are
+    // already visible and only the changed lines are worth repeating
+    message += "\n\n" + truncate(makePrintable(changes.map(formatChange).join("\n")), MAX_ANNOTATION_MESSAGE_LENGTH);
   }
   return `::error ${propertiesText}::${escapeMessage(message)}`;
 }
 
 /**
- * Gets the range of lines in the original file covered by the first hunk of
- * a unified diff, falling back to the first line when there's no hunk.
+ * Gets the range of lines in the original file that a change covers. An
+ * insertion doesn't cover any, so it points at the line it comes after.
  */
-function firstHunkRange(diff) {
-  const match = diff == null ? null : /^@@ -(\d+)(?:,(\d+))? \+\d+(?:,\d+)? @@/m.exec(diff);
-  if (match == null) {
+function changeRange(change) {
+  if (change == null) {
     return { line: 1, endLine: 1 };
   }
-  // an empty original file has a hunk starting at line 0
-  const line = Math.max(Number(match[1]), 1);
-  // a count of zero means lines are only inserted after this line
-  const count = Math.max(match[2] == null ? 1 : Number(match[2]), 1);
-  return { line, endLine: line + count - 1 };
+  if (change.oldCount === 0) {
+    const line = Math.max(change.oldStart - 1, 1);
+    return { line, endLine: line };
+  }
+  return { line: change.oldStart, endLine: change.oldStart + change.oldCount - 1 };
+}
+
+/** Formats a change as a unified diff hunk without context lines, like `diff -U0` does. */
+function formatChange(change) {
+  const header = `@@ -${hunkRange(change.oldStart, change.oldCount)} +${
+    hunkRange(change.newStart, change.newCount)
+  } @@`;
+  return [header, ...change.lines].join("\n");
+}
+
+function hunkRange(start, count) {
+  if (count === 1) {
+    return `${start}`;
+  }
+  // an empty range is written as the line it comes after
+  return `${count === 0 ? start - 1 : start},${count}`;
 }
 
 /**
- * Gets the line ending the original file had when a unified diff only changes
- * line endings, which is found by rebuilding both sides of the diff and
- * comparing them without carriage returns. Returns `undefined` otherwise.
+ * Splits a unified diff into its changes, which are the consecutive runs of
+ * removed and added lines, along with where they start on each side.
  */
-function getLineEndingsOnlyChange(diff) {
-  const oldLines = [];
-  const newLines = [];
-  let originalHasCarriageReturn = false;
-  // the sides the previous line was added to, so a "no newline at end of
-  // file" marker can be applied to it
-  let previousSides = [];
+function parseChanges(diff) {
+  const changes = [];
+  let current;
   let inHunk = false;
+  let oldLine = 0;
+  let newLine = 0;
   for (const line of diff.split("\n")) {
-    if (line.startsWith("@@")) {
+    const hunk = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/.exec(line);
+    if (hunk != null) {
       inHunk = true;
+      current = undefined;
+      oldLine = hunkStartLine(hunk[1], hunk[2]);
+      newLine = hunkStartLine(hunk[3], hunk[4]);
       continue;
     }
     if (!inHunk) {
       continue;
     }
-    if (line.startsWith("\\")) {
-      for (const side of previousSides) {
-        side[side.length - 1] += "<no newline>";
-      }
-      continue;
-    }
     const sign = line[0];
-    previousSides = sign === "-" ? [oldLines] : sign === "+" ? [newLines] : sign === " " ? [oldLines, newLines] : [];
-    if (sign === "-" && line.endsWith("\r")) {
-      originalHasCarriageReturn = true;
-    }
-    for (const side of previousSides) {
-      side.push(line.slice(1).replace(/\r$/, ""));
+    if (sign === "-" || sign === "+") {
+      if (current == null) {
+        current = { oldStart: oldLine, oldCount: 0, newStart: newLine, newCount: 0, lines: [] };
+        changes.push(current);
+      }
+      current.lines.push(line);
+      if (sign === "-") {
+        current.oldCount++;
+        oldLine++;
+      } else {
+        current.newCount++;
+        newLine++;
+      }
+    } else if (sign === "\\") {
+      // a "no newline at end of file" marker belongs to the line before it
+      current?.lines.push(line);
+    } else {
+      // a context line ends the current change
+      current = undefined;
+      oldLine++;
+      newLine++;
     }
   }
-  const isOnlyLineEndings = oldLines.length === newLines.length && oldLines.every((line, i) => line === newLines[i]);
-  return isOnlyLineEndings ? { original: originalHasCarriageReturn ? "crlf" : "lf" } : undefined;
+  return changes;
+}
+
+/** Gets the first line of a hunk, where an empty range is written as the line it comes after. */
+function hunkStartLine(start, count) {
+  const line = Number(start);
+  return count === "0" ? line + 1 : line;
+}
+
+/**
+ * Gets the line ending the original file had when a diff only changes line
+ * endings, which is found by comparing the removed and added lines of each
+ * change without carriage returns. Returns `undefined` otherwise.
+ */
+function getLineEndingsOnlyChange(changes) {
+  let originalHasCarriageReturn = false;
+  for (const change of changes) {
+    const oldLines = [];
+    const newLines = [];
+    // the side the previous line was added to, so a "no newline at end of
+    // file" marker can be applied to it
+    let previousSide;
+    for (const line of change.lines) {
+      if (line.startsWith("\\")) {
+        if (previousSide != null) {
+          previousSide[previousSide.length - 1] += "<no newline>";
+        }
+        continue;
+      }
+      previousSide = line[0] === "-" ? oldLines : newLines;
+      if (previousSide === oldLines && line.endsWith("\r")) {
+        originalHasCarriageReturn = true;
+      }
+      previousSide.push(line.slice(1).replace(/\r$/, ""));
+    }
+    const isOnlyLineEndings = oldLines.length === newLines.length && oldLines.every((line, i) => line === newLines[i]);
+    if (!isOnlyLineEndings) {
+      return undefined;
+    }
+  }
+  return { original: originalHasCarriageReturn ? "crlf" : "lf" };
 }
 
 function toRelativePath(filePath, workspace) {
   const relativePath = path.relative(workspace, filePath);
   const isOutside = relativePath === ".." || relativePath.startsWith(`..${path.sep}`) || path.isAbsolute(relativePath);
   return (isOutside ? filePath : relativePath).replaceAll("\\", "/");
-}
-
-/** Removes the `--- original` and `+++ formatted` lines. */
-function stripDiffHeader(diff) {
-  return diff.split("\n").filter((line) => !/^(---|\+\+\+) /.test(line)).join("\n");
 }
 
 /** Makes carriage returns visible so a line ending difference is readable. */

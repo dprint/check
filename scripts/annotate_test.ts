@@ -17,7 +17,7 @@ async function runAnnotate(workspace: string, entries: Record<string, unknown>[]
   };
 }
 
-Deno.test("annotates each file at the first hunk and prints the diffs", async () => {
+Deno.test("annotates each file at the first change and prints the diffs", async () => {
   const workspace = await Deno.makeTempDir();
   try {
     const result = await runAnnotate(workspace, [{
@@ -41,7 +41,7 @@ Deno.test("annotates each file at the first hunk and prints the diffs", async ()
       "+- a",
       "+- b",
       "--",
-      "::error file=src/bad.md,line=3,title=dprint,endLine=6::File is not formatted. Run `dprint fmt` to fix.%0A@@ -3,4 +3,2 @@%0A # T%0A-*   a%0A-*  b%0A+- a%0A+- b",
+      "::error file=src/bad.md,line=4,title=dprint,endLine=5::File is not formatted. Run `dprint fmt` to fix.%0A%0A@@ -4,2 +4,2 @@%0A-*   a%0A-*  b%0A+- a%0A+- b",
       "from bad.json:",
       "--- original",
       "+++ formatted",
@@ -49,10 +49,44 @@ Deno.test("annotates each file at the first hunk and prints the diffs", async ()
       "-{\"a\":1}",
       "+{ \"a\": 1 }",
       "--",
-      "::error file=bad.json,line=1,title=dprint::File is not formatted. Run `dprint fmt` to fix.%0A@@ -1 +1 @@%0A-{\"a\":1}%0A+{ \"a\": 1 }",
+      "::error file=bad.json,line=1,title=dprint::File is not formatted. Run `dprint fmt` to fix.%0A%0A@@ -1 +1 @@%0A-{\"a\":1}%0A+{ \"a\": 1 }",
       "Found 2 not formatted files. Run dprint fmt to fix.",
       "",
     ]);
+  } finally {
+    await Deno.remove(workspace, { recursive: true });
+  }
+});
+
+Deno.test("annotates only the changed lines since the surrounding lines are already visible", async () => {
+  const workspace = await Deno.makeTempDir();
+  try {
+    const result = await runAnnotate(workspace, [{
+      file: `${workspace}/context.md`,
+      diff: "--- original\n+++ formatted\n@@ -8,7 +8,7 @@\n \n a\n \n-##   Title\n+## Title\n \n b\n",
+    }, {
+      // a hunk can have several changes separated by context lines
+      file: `${workspace}/two-changes.md`,
+      diff: "--- original\n+++ formatted\n@@ -1,6 +1,6 @@\n a\n-b \n+b\n c\n d\n e\n-f \n+f\n",
+    }, {
+      // an insertion doesn't cover any original lines, so it points at the line before it
+      file: `${workspace}/insertion.md`,
+      diff: "--- original\n+++ formatted\n@@ -1,2 +1,3 @@\n a\n+b\n c\n",
+    }]);
+    assertEquals(result.stderr, "");
+    assertEquals(result.code, 0);
+    assertStringIncludes(
+      result.stdout,
+      "::error file=context.md,line=11,title=dprint::File is not formatted. Run `dprint fmt` to fix.%0A%0A@@ -11 +11 @@%0A-##   Title%0A+## Title\n",
+    );
+    assertStringIncludes(
+      result.stdout,
+      "::error file=two-changes.md,line=2,title=dprint::File is not formatted. Run `dprint fmt` to fix.%0A%0A@@ -2 +2 @@%0A-b %0A+b%0A@@ -6 +6 @@%0A-f %0A+f\n",
+    );
+    assertStringIncludes(
+      result.stdout,
+      "::error file=insertion.md,line=1,title=dprint::File is not formatted. Run `dprint fmt` to fix.%0A%0A@@ -1,0 +2 @@%0A+b\n",
+    );
   } finally {
     await Deno.remove(workspace, { recursive: true });
   }
@@ -69,7 +103,7 @@ Deno.test("makes carriage returns visible and escapes the annotation", async () 
     assertStringIncludes(result.stdout, "-{\"ok\":true}\\r\n+{ \"ok\": true }\n");
     assertStringIncludes(
       result.stdout,
-      "::error file=100%25/a%2Cb%3Ac.json,line=1,title=dprint::File is not formatted. Run `dprint fmt` to fix.%0A@@ -1 +1 @@%0A-{\"ok\":true}\\r%0A+{ \"ok\": true }",
+      "::error file=100%25/a%2Cb%3Ac.json,line=1,title=dprint::File is not formatted. Run `dprint fmt` to fix.%0A%0A@@ -1 +1 @@%0A-{\"ok\":true}\\r%0A+{ \"ok\": true }",
     );
     assertStringIncludes(result.stdout, "Found 1 not formatted file.");
   } finally {
@@ -112,7 +146,7 @@ Deno.test("summarizes a diff that only changes line endings", async () => {
       "\\ No newline at end of file",
       "+a",
       "--",
-      "::error file=missing-newline.md,line=1,title=dprint::File is not formatted. Run `dprint fmt` to fix.%0A@@ -1 +1 @@%0A-a%0A\\ No newline at end of file%0A+a",
+      "::error file=missing-newline.md,line=1,title=dprint::File is not formatted. Run `dprint fmt` to fix.%0A%0A@@ -1 +1 @@%0A-a%0A\\ No newline at end of file%0A+a",
       "Found 3 not formatted files. Run dprint fmt to fix.",
       "",
     ]);
@@ -179,7 +213,10 @@ Deno.test("clamps the line to 1 for an empty original file", async () => {
       diff: "--- original\n+++ formatted\n@@ -0,0 +1 @@\n+{}\n",
     }]);
     assertEquals(result.code, 0);
-    assertStringIncludes(result.stdout, "::error file=empty.json,line=1,title=dprint::");
+    assertStringIncludes(
+      result.stdout,
+      "::error file=empty.json,line=1,title=dprint::File is not formatted. Run `dprint fmt` to fix.%0A%0A@@ -0,0 +1 @@%0A+{}\n",
+    );
   } finally {
     await Deno.remove(workspace, { recursive: true });
   }
