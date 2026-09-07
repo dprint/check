@@ -295,12 +295,13 @@ const hashCacheBefore = step({
   outputs: ["hash"] as const,
 }).dependsOn(restoreCache);
 
-// with annotations enabled, the check runs with --json and the output is
-// turned into readable diffs and annotations by a script; dprint before 0.57
-// rejects --json with exit code 10 (argument parsing error), in which case
-// the check just runs again without it
+// the check runs with --json and the output is turned into readable diffs,
+// annotations and the step outputs by a script; dprint before 0.57 rejects
+// --json with exit code 10 (argument parsing error), in which case the check
+// just runs again without it
 const check = step({
   name: "Check formatting",
+  id: "check",
   env: {
     CONFIG_PATH: configPath,
     ANNOTATIONS: inputs.annotations,
@@ -308,7 +309,7 @@ const check = step({
   },
   run: [
     `args=(\${CONFIG_PATH:+--config "$CONFIG_PATH"} ${inputs.args})`,
-    `if [ "$ANNOTATIONS" = "true" ] && command -v node > /dev/null; then`,
+    `if command -v node > /dev/null; then`,
     `  output="$RUNNER_TEMP/dprint-check.jsonl"`,
     `  set +e`,
     `  ~/.dprint/bin/dprint check --json "\${args[@]}" > "$output" 2> "$output.stderr"`,
@@ -322,6 +323,7 @@ const check = step({
     `fi`,
     `~/.dprint/bin/dprint check "\${args[@]}"`,
   ],
+  outputs: ["unformatted-count", "unformatted-files"] as const,
 }).dependsOn(install).comesAfter(hashCacheBefore);
 
 // runs even when the check fails so the compiled plugins and the incremental
@@ -376,6 +378,14 @@ action({
     "cache-changed": {
       description: "Whether the check changed the cache and so a new cache entry was saved",
       value: hashCacheAfter.outputs.changed,
+    },
+    "unformatted-count": {
+      description: "The number of files that aren't formatted (requires dprint 0.57+)",
+      value: check.outputs["unformatted-count"],
+    },
+    "unformatted-files": {
+      description: "The files that aren't formatted, one per line (requires dprint 0.57+)",
+      value: check.outputs["unformatted-files"],
     },
   },
   defaults: { run: { shell: "bash" } },

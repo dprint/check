@@ -133,7 +133,7 @@ const cachePrimeCheck = step({
   uses: "./",
   continueOnError: true,
   with: { cache: true, "config-path": cacheTestConfig },
-  outputs: ["cache-changed"] as const,
+  outputs: ["cache-changed", "unformatted-count", "unformatted-files"] as const,
 });
 
 const cacheHitCheck = step({
@@ -141,7 +141,7 @@ const cacheHitCheck = step({
   id: "hit",
   uses: "./",
   with: { cache: true, "config-path": cacheTestConfig },
-  outputs: ["cache-matched-key", "cache-changed"] as const,
+  outputs: ["cache-matched-key", "cache-changed", "unformatted-count", "unformatted-files"] as const,
 });
 
 const cacheJob = job("cache", {
@@ -155,11 +155,17 @@ const cacheJob = job("cache", {
     },
     cachePrimeCheck,
     {
-      name: "Verify the check failed and the cache was saved",
-      env: { CACHE_CHANGED: cachePrimeCheck.outputs["cache-changed"] },
+      name: "Verify the check failed, reported the file and the cache was saved",
+      env: {
+        CACHE_CHANGED: cachePrimeCheck.outputs["cache-changed"],
+        UNFORMATTED_COUNT: cachePrimeCheck.outputs["unformatted-count"],
+        UNFORMATTED_FILES: cachePrimeCheck.outputs["unformatted-files"],
+      },
       run: [
         `test "${expr("steps.prime.outcome")}" = "failure"`,
         `test "$CACHE_CHANGED" = "true"`,
+        `test "$UNFORMATTED_COUNT" = "1"`,
+        `test "$UNFORMATTED_FILES" = "poorly-formatted.json"`,
       ],
     },
     {
@@ -172,6 +178,8 @@ const cacheJob = job("cache", {
       env: {
         MATCHED_KEY: cacheHitCheck.outputs["cache-matched-key"],
         CACHE_CHANGED: cacheHitCheck.outputs["cache-changed"],
+        UNFORMATTED_COUNT: cacheHitCheck.outputs["unformatted-count"],
+        UNFORMATTED_FILES: cacheHitCheck.outputs["unformatted-files"],
         EXPECTED_KEY: concat(
           "dprint-cache-",
           expr("runner.os"),
@@ -191,6 +199,8 @@ const cacheJob = job("cache", {
         `test "$MATCHED_KEY" = "$EXPECTED_KEY"`,
         // nothing new was checked, so the restored cache is left as-is
         `test "$CACHE_CHANGED" = "false"`,
+        `test "$UNFORMATTED_COUNT" = "0"`,
+        `test -z "$UNFORMATTED_FILES"`,
       ],
     },
   ),

@@ -111,12 +111,16 @@ jobs:
         with:
           cache: true
           config-path: cache-test.json
-      - name: Verify the check failed and the cache was saved
+      - name: "Verify the check failed, reported the file and the cache was saved"
         env:
           CACHE_CHANGED: "${{ steps.prime.outputs.cache-changed }}"
+          UNFORMATTED_COUNT: "${{ steps.prime.outputs.unformatted-count }}"
+          UNFORMATTED_FILES: "${{ steps.prime.outputs.unformatted-files }}"
         run: |-
           test "${{ steps.prime.outcome }}" = "failure"
           test "$CACHE_CHANGED" = "true"
+          test "$UNFORMATTED_COUNT" = "1"
+          test "$UNFORMATTED_FILES" = "poorly-formatted.json"
       - name: Remove the poorly-formatted file
         run: rm poorly-formatted.json
       - name: Check formatting again
@@ -129,12 +133,16 @@ jobs:
         env:
           MATCHED_KEY: "${{ steps.hit.outputs.cache-matched-key }}"
           CACHE_CHANGED: "${{ steps.hit.outputs.cache-changed }}"
+          UNFORMATTED_COUNT: "${{ steps.hit.outputs.unformatted-count }}"
+          UNFORMATTED_FILES: "${{ steps.hit.outputs.unformatted-files }}"
           EXPECTED_KEY: 'dprint-cache-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles(''cache-test.json'') }}-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}'
         run: |-
           echo "matched key: $MATCHED_KEY"
           echo "expected:    $EXPECTED_KEY"
           test "$MATCHED_KEY" = "$EXPECTED_KEY"
           test "$CACHE_CHANGED" = "false"
+          test "$UNFORMATTED_COUNT" = "0"
+          test -z "$UNFORMATTED_FILES"
   lint:
     runs-on: ubuntu-latest
     steps:

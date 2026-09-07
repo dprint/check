@@ -115,6 +115,20 @@ This caches:
 | `dprint-version`    | The version of dprint that was installed                               |
 | `cache-matched-key` | Key of the cache entry that was restored, if any                       |
 | `cache-changed`     | Whether the check changed the cache and so a new cache entry was saved |
+| `unformatted-count` | The number of files that aren't formatted                              |
+| `unformatted-files` | The files that aren't formatted, one per line                          |
+
+The `unformatted-count` and `unformatted-files` outputs require dprint 0.57 or later and `node` on the path, like [annotations](#annotations), and are empty otherwise. Since the action fails when a file isn't formatted, use `continue-on-error: true` or `if: always()` on a later step to read them:
+
+```yml
+- uses: dprint/check@v2
+  id: dprint
+  continue-on-error: true
+- if: steps.dprint.outputs.unformatted-count != '0'
+  env:
+    FILES: ${{ steps.dprint.outputs.unformatted-files }}
+  run: echo "$FILES"
+```
 
 ## Troubleshooting
 
