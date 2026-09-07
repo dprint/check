@@ -3,17 +3,21 @@ import { fromFileUrl } from "jsr:@std/path@1";
 
 const scriptPath = fromFileUrl(new URL("./annotate.mjs", import.meta.url));
 
-async function runAnnotate(workspace: string, entries: Record<string, unknown>[], runnerOs = "Linux") {
+async function runAnnotate(workspace: string, entries: Record<string, unknown>[], env: Record<string, string> = {}) {
   const jsonlPath = `${workspace}/dprint-check.jsonl`;
   await Deno.writeTextFile(jsonlPath, entries.map((entry) => JSON.stringify(entry)).join("\n") + "\n");
+  const outputsPath = `${workspace}/github-output`;
+  await Deno.writeTextFile(outputsPath, "");
   const output = await new Deno.Command("node", {
     args: [scriptPath, jsonlPath],
-    env: { GITHUB_WORKSPACE: workspace, RUNNER_OS: runnerOs },
+    env: { GITHUB_WORKSPACE: workspace, GITHUB_OUTPUT: outputsPath, RUNNER_OS: "Linux", ...env },
   }).output();
   return {
     code: output.code,
     stdout: new TextDecoder().decode(output.stdout),
     stderr: new TextDecoder().decode(output.stderr),
+    // the multiline delimiter is random, so replace it for comparison
+    outputs: (await Deno.readTextFile(outputsPath)).replaceAll(/dprint-check-[0-9a-f-]+/g, "DELIMITER"),
   };
 }
 
@@ -53,6 +57,36 @@ Deno.test("annotates each file at the first change and prints the diffs", async 
       "Found 2 not formatted files. Run dprint fmt to fix.",
       "",
     ]);
+    assertEquals(
+      result.outputs,
+      "unformatted-count=2\nunformatted-files<<DELIMITER\nsrc/bad.md\nbad.json\nDELIMITER\n",
+    );
+  } finally {
+    await Deno.remove(workspace, { recursive: true });
+  }
+});
+
+Deno.test("records the outputs without annotations when they're disabled", async () => {
+  const workspace = await Deno.makeTempDir();
+  try {
+    const result = await runAnnotate(workspace, [{
+      file: `${workspace}/bad.json`,
+      diff: "--- original\n+++ formatted\n@@ -1 +1 @@\n-{\"a\":1}\n+{ \"a\": 1 }\n",
+    }], { ANNOTATIONS: "false" });
+    assertEquals(result.stderr, "");
+    assertEquals(result.code, 0);
+    assertEquals(result.stdout.split("\n"), [
+      "from bad.json:",
+      "--- original",
+      "+++ formatted",
+      "@@ -1 +1 @@",
+      "-{\"a\":1}",
+      "+{ \"a\": 1 }",
+      "--",
+      "Found 1 not formatted file. Run dprint fmt to fix.",
+      "",
+    ]);
+    assertEquals(result.outputs, "unformatted-count=1\nunformatted-files<<DELIMITER\nbad.json\nDELIMITER\n");
   } finally {
     await Deno.remove(workspace, { recursive: true });
   }
@@ -225,7 +259,7 @@ Deno.test("recommends only running on linux when a windows checkout has crlf lin
       // the config wants crlf, so the runner's checkout isn't the problem
       file: `${workspace}/lf.md`,
       diff: "--- original\n+++ formatted\n@@ -1 +1 @@\n-a\n+a\r\n",
-    }], "Windows");
+    }], { RUNNER_OS: "Windows" });
     assertEquals(result.stderr, "");
     assertEquals(result.code, 0);
     assertStringIncludes(
@@ -308,6 +342,7 @@ Deno.test("prints nothing for empty output", async () => {
     const result = await runAnnotate(workspace, []);
     assertEquals(result.code, 0);
     assertEquals(result.stdout, "");
+    assertEquals(result.outputs, "unformatted-count=0\nunformatted-files<<DELIMITER\nDELIMITER\n");
   } finally {
     await Deno.remove(workspace, { recursive: true });
   }

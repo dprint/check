@@ -1,7 +1,9 @@
-// Prints the output of `dprint check --json` in a readable form and emits a
-// GitHub Actions error annotation for each file that isn't formatted.
+// Prints the output of `dprint check --json` in a readable form, emits a
+// GitHub Actions error annotation for each file that isn't formatted (unless
+// ANNOTATIONS=false) and records the files as step outputs.
 //
 // Usage: node annotate.mjs <path to the newline delimited json output>
+import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -34,31 +36,33 @@ const entries = fs.readFileSync(jsonlPath, "utf8")
     }
   });
 
+const relativePaths = entries.map((entry) => toRelativePath(entry.file, workspace));
+const annotationsEnabled = process.env.ANNOTATIONS !== "false";
 // github ignores the annotations past its limit, so when there are too many
 // files the last annotation lists the ones that wouldn't be shown instead
 const annotatedCount = entries.length > MAX_ANNOTATIONS ? MAX_ANNOTATIONS - 1 : entries.length;
 entries.forEach((entry, index) => {
-  const relativePath = toRelativePath(entry.file, workspace);
   const changes = entry.diff == null ? undefined : parseChanges(entry.diff);
   // a diff that only changes line endings is every line of the file, so
   // summarize it like dprint's default output does
   const lineEndings = changes == null ? undefined : getLineEndingsOnlyChange(changes);
-  console.log(`from ${relativePath}:`);
+  console.log(`from ${relativePaths[index]}:`);
   console.log(describeDiff(entry.diff, lineEndings));
   console.log("--");
-  if (index < annotatedCount) {
-    console.log(annotation(relativePath, changes, lineEndings));
+  if (annotationsEnabled && index < annotatedCount) {
+    console.log(annotation(relativePaths[index], changes, lineEndings));
   }
 });
-if (annotatedCount < entries.length) {
-  const remainingPaths = entries.slice(annotatedCount).map((entry) => toRelativePath(entry.file, workspace));
-  console.log(remainingFilesAnnotation(remainingPaths));
+if (annotationsEnabled && annotatedCount < entries.length) {
+  console.log(remainingFilesAnnotation(relativePaths.slice(annotatedCount)));
 }
 
 if (entries.length > 0) {
   const suffix = entries.length === 1 ? "file" : "files";
   console.log(`Found ${entries.length} not formatted ${suffix}. Run dprint fmt to fix.`);
 }
+
+writeOutputs(relativePaths);
 
 /** Gets the diff in a readable form, or a short message when there's nothing useful to show. */
 function describeDiff(diff, lineEndings) {
@@ -149,6 +153,26 @@ function remainingFilesAnnotation(relativePaths) {
 
 function truncatedMessage(text, whatWasTruncated) {
   return `${text}\n(truncated, see the log for the full ${whatWasTruncated})`;
+}
+
+/** Records the files that aren't formatted as step outputs when running in GitHub Actions. */
+function writeOutputs(relativePaths) {
+  const outputPath = process.env.GITHUB_OUTPUT;
+  if (outputPath == null) {
+    return;
+  }
+  // a multiline value ends at a delimiter, so use one no path can contain
+  const delimiter = `dprint-check-${randomUUID()}`;
+  fs.appendFileSync(
+    outputPath,
+    [
+      `unformatted-count=${relativePaths.length}`,
+      `unformatted-files<<${delimiter}`,
+      ...relativePaths,
+      delimiter,
+      "",
+    ].join("\n"),
+  );
 }
 
 function formatChange(change) {

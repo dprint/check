@@ -38,6 +38,12 @@ outputs:
   cache-changed:
     description: Whether the check changed the cache and so a new cache entry was saved
     value: "${{ steps.cache-after.outputs.changed }}"
+  unformatted-count:
+    description: The number of files that aren't formatted (requires dprint 0.57+)
+    value: "${{ steps.check.outputs.unformatted-count }}"
+  unformatted-files:
+    description: 'The files that aren''t formatted, one per line (requires dprint 0.57+)'
+    value: "${{ steps.check.outputs.unformatted-files }}"
 runs:
   using: composite
   steps:
@@ -228,6 +234,7 @@ runs:
         }
         echo "hash=$(hash_cache_dir)" >> "$GITHUB_OUTPUT"
     - name: Check formatting
+      id: check
       shell: bash
       env:
         CONFIG_PATH: "${{ inputs.config-path }}"
@@ -235,7 +242,7 @@ runs:
         ANNOTATE_SCRIPT: "${{ github.action_path }}/scripts/annotate.mjs"
       run: |-
         args=(${CONFIG_PATH:+--config "$CONFIG_PATH"} ${{ inputs.args }})
-        if [ "$ANNOTATIONS" = "true" ] && command -v node > /dev/null; then
+        if command -v node > /dev/null; then
           output="$RUNNER_TEMP/dprint-check.jsonl"
           set +e
           ~/.dprint/bin/dprint check --json "${args[@]}" > "$output" 2> "$output.stderr"

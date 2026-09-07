@@ -115,6 +115,8 @@ This caches:
 | `dprint-version`    | The version of dprint that was installed                               |
 | `cache-matched-key` | Key of the cache entry that was restored, if any                       |
 | `cache-changed`     | Whether the check changed the cache and so a new cache entry was saved |
+| `unformatted-count` | The number of files that aren't formatted                              |
+| `unformatted-files` | The files that aren't formatted, one per line                          |
 
 ## Troubleshooting
 
