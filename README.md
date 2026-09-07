@@ -82,7 +82,7 @@ To pass additional arguments to `dprint check`, pass them to the `args` input.
 
 ### Annotations
 
-When a file isn't formatted, the action emits an error annotation for it, which GitHub shows on the pull request's changed files and in the check summary. The annotation points at the first change and lists the changed lines of the diff. This requires dprint 0.57 or later and `node` on the path (always the case on GitHub-hosted runners); otherwise the action only outputs the diffs to the log. Note that GitHub shows at most 10 error annotations per step, so the log is the complete list.
+When a file isn't formatted, the action emits an error annotation for it, which GitHub shows on the pull request's changed files and in the check summary. The annotation points at the first change and lists the changed lines of the diff. This requires dprint 0.57 or later and `node` on the path (always the case on GitHub-hosted runners); otherwise the action only outputs the diffs to the log. GitHub shows at most 10 error annotations per step, so when more files than that are not formatted, the last annotation lists the remaining files instead.
 
 To disable annotations:
 
