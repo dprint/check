@@ -75,6 +75,17 @@ jobs:
         uses: ./
         with:
           args: "--excludes poorly-formatted.json"
+      - name: Check formatting in a working directory
+        id: working-directory
+        uses: ./
+        with:
+          working-directory: tests/working-dir
+          config-path: dprint.json
+          cache: true
+      - name: Verify the working directory was checked
+        env:
+          UNFORMATTED_COUNT: "${{ steps.working-directory.outputs.unformatted-count }}"
+        run: test "$UNFORMATTED_COUNT" = "0"
       - name: Later steps can run dprint with the same cache
         run: |-
           test -n "$DPRINT_CACHE_DIR"

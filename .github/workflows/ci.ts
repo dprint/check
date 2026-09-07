@@ -47,6 +47,14 @@ const unattestedVersionCheck = step({
   outputs: ["dprint-version"] as const,
 });
 
+const workingDirectoryCheck = step({
+  name: "Check formatting in a working directory",
+  id: "working-directory",
+  uses: "./",
+  with: { "working-directory": "tests/working-dir", "config-path": "dprint.json", cache: true },
+  outputs: ["unformatted-count"] as const,
+});
+
 const styleJob = job("style", {
   runsOn: matrix.os,
   strategy: { matrix },
@@ -109,6 +117,14 @@ const styleJob = job("style", {
       name: "Check formatting with excludes",
       uses: "./",
       with: { args: "--excludes poorly-formatted.json" },
+    },
+    // the poorly-formatted file at the root would fail this if the check
+    // didn't run in the directory, and the config path is relative to it
+    workingDirectoryCheck,
+    {
+      name: "Verify the working directory was checked",
+      env: { UNFORMATTED_COUNT: workingDirectoryCheck.outputs["unformatted-count"] },
+      run: `test "$UNFORMATTED_COUNT" = "0"`,
     },
     {
       name: "Later steps can run dprint with the same cache",

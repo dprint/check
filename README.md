@@ -70,6 +70,18 @@ To use a specific config, specify that with the `config-path` input:
     config-path: dprint-ci.json
 ```
 
+### Working Directory
+
+To run `dprint check` in a subdirectory, such as a package in a monorepo, specify that with the `working-directory` input:
+
+```yml
+- uses: dprint/check@v2
+  with:
+    working-directory: packages/app
+```
+
+The `config-path` and `args` inputs are relative to the working directory, while the annotations and the `unformatted-files` output are relative to the workspace.
+
 ### Args
 
 To pass additional arguments to `dprint check`, pass them to the `args` input.
