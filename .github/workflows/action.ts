@@ -18,6 +18,11 @@ const inputs = defineInputs({
     required: false,
     default: "",
   },
+  "working-directory": {
+    description: "Directory to run dprint check in, relative to the workspace (ex. packages/app)",
+    required: false,
+    default: "",
+  },
   cache: {
     description: "Cache dprint's plugins and incremental state in the GitHub Actions cache (ex. true)",
     required: false,
@@ -217,9 +222,15 @@ const install = step({
 // the repo when dprint discovers the config itself (a remote config url can't
 // be hashed, so that falls back to the repo's config files too)
 const configPath = inputs["config-path"];
+const workingDirectory = inputs["working-directory"];
+// the config path is relative to the working directory, but hashFiles is
+// relative to the workspace
+const configPathInWorkspace = workingDirectory.notEquals("")
+  .then(concat(workingDirectory, "/", configPath))
+  .else(configPath);
 const configHash = configPath.notEquals("")
   .and(configPath.startsWith("http").not())
-  .then(hashFiles(configPath))
+  .then(hashFiles(configPathInWorkspace))
   .else(hashFiles("**/dprint.json", "**/dprint.jsonc", "**/.dprint.json", "**/.dprint.jsonc"));
 
 const prepareCache = step({
@@ -303,11 +314,13 @@ const check = step({
   name: "Check formatting",
   id: "check",
   env: {
+    WORKING_DIRECTORY: workingDirectory,
     CONFIG_PATH: configPath,
     ANNOTATIONS: inputs.annotations,
     ANNOTATE_SCRIPT: concat(expr("github.action_path"), "/scripts/annotate.mjs"),
   },
   run: [
+    `cd "\${WORKING_DIRECTORY:-.}"`,
     `args=(\${CONFIG_PATH:+--config "$CONFIG_PATH"} ${inputs.args})`,
     `if command -v node > /dev/null; then`,
     `  output="$RUNNER_TEMP/dprint-check.jsonl"`,

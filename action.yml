@@ -16,6 +16,10 @@ inputs:
     description: Additional arguments to pass to dprint check
     required: false
     default: ""
+  working-directory:
+    description: "Directory to run dprint check in, relative to the workspace (ex. packages/app)"
+    required: false
+    default: ""
   cache:
     description: Cache dprint's plugins and incremental state in the GitHub Actions cache (ex. true)
     required: false
@@ -189,7 +193,7 @@ runs:
       if: inputs.cache == 'true'
       shell: bash
       env:
-        CONFIG_HASH: '${{ inputs.config-path != '''' && !startsWith(inputs.config-path, ''http'') && hashFiles(inputs.config-path) || hashFiles(''**/dprint.json'', ''**/dprint.jsonc'', ''**/.dprint.json'', ''**/.dprint.jsonc'') }}'
+        CONFIG_HASH: '${{ inputs.config-path != '''' && !startsWith(inputs.config-path, ''http'') && (hashFiles(inputs.working-directory != '''' && format(''{0}/{1}'', inputs.working-directory, inputs.config-path) || inputs.config-path)) || hashFiles(''**/dprint.json'', ''**/dprint.jsonc'', ''**/.dprint.json'', ''**/.dprint.jsonc'') }}'
       run: |-
         # respect a directory the user already set so later steps share the same cache
         if [ -z "${DPRINT_CACHE_DIR:-}" ]; then
@@ -237,10 +241,12 @@ runs:
       id: check
       shell: bash
       env:
+        WORKING_DIRECTORY: "${{ inputs.working-directory }}"
         CONFIG_PATH: "${{ inputs.config-path }}"
         ANNOTATIONS: "${{ inputs.annotations }}"
         ANNOTATE_SCRIPT: "${{ github.action_path }}/scripts/annotate.mjs"
       run: |-
+        cd "${WORKING_DIRECTORY:-.}"
         args=(${CONFIG_PATH:+--config "$CONFIG_PATH"} ${{ inputs.args }})
         if command -v node > /dev/null; then
           output="$RUNNER_TEMP/dprint-check.jsonl"
