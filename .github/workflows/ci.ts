@@ -139,17 +139,35 @@ const styleJob = job("style", {
 
 // === cache job ===
 
-// both runs happen in one job so they share a runner: a second job could land
-// on a runner with different cpu features, which would compile its own plugin
-// variants and change the cache, and re-running only failed jobs would lose the
-// entry the first run saved
+// the prefix of the cache keys for the unique config, which only this run's
+// entries have
+const cacheTestPrefix = concat(
+  "dprint-cache-",
+  expr("runner.os"),
+  "-",
+  expr("runner.arch"),
+  "-",
+  hashFiles(cacheTestConfig),
+);
+
+// uses its own cache directory so the later checks don't see what it compiled
+const cacheNoSaveCheck = step({
+  name: "Check formatting without saving the cache (expected to fail)",
+  id: "no-save",
+  uses: "./",
+  continueOnError: true,
+  env: { DPRINT_CACHE_DIR: concat(expr("runner.temp"), "/dprint-cache-no-save") },
+  with: { cache: true, "cache-save": false, "config-path": cacheTestConfig },
+  outputs: ["cache-matched-key", "cache-changed", "cache-saved"] as const,
+});
+
 const cachePrimeCheck = step({
   name: "Check formatting (expected to fail)",
   id: "prime",
   uses: "./",
   continueOnError: true,
   with: { cache: true, "config-path": cacheTestConfig },
-  outputs: ["cache-changed", "unformatted-count", "unformatted-files"] as const,
+  outputs: ["cache-matched-key", "cache-changed", "cache-saved", "unformatted-count", "unformatted-files"] as const,
 });
 
 const cacheHitCheck = step({
@@ -157,9 +175,13 @@ const cacheHitCheck = step({
   id: "hit",
   uses: "./",
   with: { cache: true, "config-path": cacheTestConfig },
-  outputs: ["cache-matched-key", "cache-changed", "unformatted-count", "unformatted-files"] as const,
+  outputs: ["cache-matched-key", "cache-changed", "cache-saved", "unformatted-count", "unformatted-files"] as const,
 });
 
+// the runs happen in one job so they share a runner: a second job could land
+// on a runner with different cpu features, which would compile its own plugin
+// variants and change the cache, and re-running only failed jobs would lose the
+// entry the first run saved
 const cacheJob = job("cache", {
   runsOn: matrix.os,
   strategy: { matrix },
@@ -169,17 +191,42 @@ const cacheJob = job("cache", {
       name: "Create unique config and poorly-formatted file",
       run: [...createCacheTestConfig, createPoorlyFormattedFile],
     },
+    cacheNoSaveCheck,
+    {
+      name: "Verify the cache changed but wasn't saved",
+      env: {
+        MATCHED_KEY: cacheNoSaveCheck.outputs["cache-matched-key"],
+        CACHE_CHANGED: cacheNoSaveCheck.outputs["cache-changed"],
+        CACHE_SAVED: cacheNoSaveCheck.outputs["cache-saved"],
+        CACHE_TEST_PREFIX: cacheTestPrefix,
+      },
+      run: [
+        `test "${expr("steps.no-save.outcome")}" = "failure"`,
+        `echo "matched key: $MATCHED_KEY"`,
+        // no entry exists for the unique config yet
+        `case "$MATCHED_KEY" in "$CACHE_TEST_PREFIX"*) exit 1 ;; esac`,
+        `test "$CACHE_CHANGED" = "true"`,
+        `test "$CACHE_SAVED" = "false"`,
+      ],
+    },
     cachePrimeCheck,
     {
       name: "Verify the check failed, reported the file and the cache was saved",
       env: {
+        MATCHED_KEY: cachePrimeCheck.outputs["cache-matched-key"],
         CACHE_CHANGED: cachePrimeCheck.outputs["cache-changed"],
+        CACHE_SAVED: cachePrimeCheck.outputs["cache-saved"],
         UNFORMATTED_COUNT: cachePrimeCheck.outputs["unformatted-count"],
         UNFORMATTED_FILES: cachePrimeCheck.outputs["unformatted-files"],
+        CACHE_TEST_PREFIX: cacheTestPrefix,
       },
       run: [
         `test "${expr("steps.prime.outcome")}" = "failure"`,
+        `echo "matched key: $MATCHED_KEY"`,
+        // the check without saving didn't leave an entry behind
+        `case "$MATCHED_KEY" in "$CACHE_TEST_PREFIX"*) exit 1 ;; esac`,
         `test "$CACHE_CHANGED" = "true"`,
+        `test "$CACHE_SAVED" = "true"`,
         `test "$UNFORMATTED_COUNT" = "1"`,
         `test "$UNFORMATTED_FILES" = "poorly-formatted.json"`,
       ],
@@ -194,20 +241,10 @@ const cacheJob = job("cache", {
       env: {
         MATCHED_KEY: cacheHitCheck.outputs["cache-matched-key"],
         CACHE_CHANGED: cacheHitCheck.outputs["cache-changed"],
+        CACHE_SAVED: cacheHitCheck.outputs["cache-saved"],
         UNFORMATTED_COUNT: cacheHitCheck.outputs["unformatted-count"],
         UNFORMATTED_FILES: cacheHitCheck.outputs["unformatted-files"],
-        EXPECTED_KEY: concat(
-          "dprint-cache-",
-          expr("runner.os"),
-          "-",
-          expr("runner.arch"),
-          "-",
-          hashFiles(cacheTestConfig),
-          "-",
-          expr("github.job"),
-          "-",
-          runUniqueId,
-        ),
+        EXPECTED_KEY: concat(cacheTestPrefix, "-", expr("github.job"), "-", runUniqueId),
       },
       run: [
         `echo "matched key: $MATCHED_KEY"`,
@@ -215,6 +252,7 @@ const cacheJob = job("cache", {
         `test "$MATCHED_KEY" = "$EXPECTED_KEY"`,
         // nothing new was checked, so the restored cache is left as-is
         `test "$CACHE_CHANGED" = "false"`,
+        `test "$CACHE_SAVED" = "false"`,
         `test "$UNFORMATTED_COUNT" = "0"`,
         `test -z "$UNFORMATTED_FILES"`,
       ],

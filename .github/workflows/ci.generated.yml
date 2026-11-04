@@ -115,6 +115,28 @@ jobs:
             cat dprint.json
           } > cache-test.json
           echo '{"a": 1, "b": 2}' > poorly-formatted.json
+      - name: Check formatting without saving the cache (expected to fail)
+        id: no-save
+        uses: ./
+        env:
+          DPRINT_CACHE_DIR: "${{ runner.temp }}/dprint-cache-no-save"
+        continue-on-error: true
+        with:
+          cache: true
+          cache-save: false
+          config-path: cache-test.json
+      - name: Verify the cache changed but wasn't saved
+        env:
+          MATCHED_KEY: "${{ steps.no-save.outputs.cache-matched-key }}"
+          CACHE_CHANGED: "${{ steps.no-save.outputs.cache-changed }}"
+          CACHE_SAVED: "${{ steps.no-save.outputs.cache-saved }}"
+          CACHE_TEST_PREFIX: 'dprint-cache-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles(''cache-test.json'') }}'
+        run: |-
+          test "${{ steps.no-save.outcome }}" = "failure"
+          echo "matched key: $MATCHED_KEY"
+          case "$MATCHED_KEY" in "$CACHE_TEST_PREFIX"*) exit 1 ;; esac
+          test "$CACHE_CHANGED" = "true"
+          test "$CACHE_SAVED" = "false"
       - name: Check formatting (expected to fail)
         id: prime
         uses: ./
@@ -124,12 +146,18 @@ jobs:
           config-path: cache-test.json
       - name: "Verify the check failed, reported the file and the cache was saved"
         env:
+          MATCHED_KEY: "${{ steps.prime.outputs.cache-matched-key }}"
           CACHE_CHANGED: "${{ steps.prime.outputs.cache-changed }}"
+          CACHE_SAVED: "${{ steps.prime.outputs.cache-saved }}"
           UNFORMATTED_COUNT: "${{ steps.prime.outputs.unformatted-count }}"
           UNFORMATTED_FILES: "${{ steps.prime.outputs.unformatted-files }}"
+          CACHE_TEST_PREFIX: 'dprint-cache-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles(''cache-test.json'') }}'
         run: |-
           test "${{ steps.prime.outcome }}" = "failure"
+          echo "matched key: $MATCHED_KEY"
+          case "$MATCHED_KEY" in "$CACHE_TEST_PREFIX"*) exit 1 ;; esac
           test "$CACHE_CHANGED" = "true"
+          test "$CACHE_SAVED" = "true"
           test "$UNFORMATTED_COUNT" = "1"
           test "$UNFORMATTED_FILES" = "poorly-formatted.json"
       - name: Remove the poorly-formatted file
@@ -144,6 +172,7 @@ jobs:
         env:
           MATCHED_KEY: "${{ steps.hit.outputs.cache-matched-key }}"
           CACHE_CHANGED: "${{ steps.hit.outputs.cache-changed }}"
+          CACHE_SAVED: "${{ steps.hit.outputs.cache-saved }}"
           UNFORMATTED_COUNT: "${{ steps.hit.outputs.unformatted-count }}"
           UNFORMATTED_FILES: "${{ steps.hit.outputs.unformatted-files }}"
           EXPECTED_KEY: 'dprint-cache-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles(''cache-test.json'') }}-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}'
@@ -152,6 +181,7 @@ jobs:
           echo "expected:    $EXPECTED_KEY"
           test "$MATCHED_KEY" = "$EXPECTED_KEY"
           test "$CACHE_CHANGED" = "false"
+          test "$CACHE_SAVED" = "false"
           test "$UNFORMATTED_COUNT" = "0"
           test -z "$UNFORMATTED_FILES"
   lint:

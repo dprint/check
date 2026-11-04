@@ -120,15 +120,31 @@ This caches:
 - The [incremental](https://dprint.dev/cli/#incremental) state, so `dprint check` only checks files that changed since the last run that saw them.
 - The verified download of the dprint executable, per version, so the attestation verification can be skipped when the cached download matches the release's digest.
 
+#### Only saving on the default branch
+
+A run saves a new cache entry whenever the check changed the cache, which is nearly every run because of the incremental state. GitHub [scopes](https://docs.github.com/en/actions/using-workflows/caching-dependencies-to-speed-up-workflows#restrictions-for-accessing-a-cache) cache entries to the branch that saved them and its base branch, so an entry saved on a pull request only helps later pushes to that same pull request, while an entry saved on the default branch is restored by every run. The extra entries from pull requests count towards the repository's cache size limit, which evicts other entries when exceeded.
+
+If your workflow runs on pushes to the default branch, set the `cache-save` input so pull requests only restore:
+
+```yml
+- uses: dprint/check@v2
+  with:
+    cache: true
+    cache-save: ${{ github.ref_name == github.event.repository.default_branch }}
+```
+
+Leave it at the default if your workflow only runs on pull requests, since nothing would ever be saved otherwise.
+
 ## Outputs
 
-| Output              | Description                                                            |
-| ------------------- | ---------------------------------------------------------------------- |
-| `dprint-version`    | The version of dprint that was installed                               |
-| `cache-matched-key` | Key of the cache entry that was restored, if any                       |
-| `cache-changed`     | Whether the check changed the cache and so a new cache entry was saved |
-| `unformatted-count` | The number of files that aren't formatted                              |
-| `unformatted-files` | The files that aren't formatted, one per line                          |
+| Output              | Description                                                                         |
+| ------------------- | ----------------------------------------------------------------------------------- |
+| `dprint-version`    | The version of dprint that was installed                                            |
+| `cache-matched-key` | Key of the cache entry that was restored, if any                                    |
+| `cache-changed`     | Whether the check changed the cache                                                 |
+| `cache-saved`       | Whether a new cache entry was saved (the cache changed and `cache-save` is enabled) |
+| `unformatted-count` | The number of files that aren't formatted                                           |
+| `unformatted-files` | The files that aren't formatted, one per line                                       |
 
 ## Troubleshooting
 

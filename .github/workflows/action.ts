@@ -28,6 +28,11 @@ const inputs = defineInputs({
     required: false,
     default: "false",
   },
+  "cache-save": {
+    description: "Save new entries to the GitHub Actions cache; set to false to only restore (ex. false)",
+    required: false,
+    default: "true",
+  },
   annotations: {
     description: "Emit a GitHub Actions error annotation for each file that isn't formatted (requires dprint 0.57+)",
     required: false,
@@ -42,6 +47,9 @@ const inputs = defineInputs({
 });
 
 const cacheEnabled = inputs.cache.equals("true");
+// saving can be limited to the default branch: an entry saved on a pr is only
+// visible to later runs of that pr, while every run sees the default branch's
+const cacheSave = inputs["cache-save"].equals("true");
 const cacheDir = expr("env.DPRINT_CACHE_DIR");
 
 // runs a command up to 3 times so a temporary network error (ex. a dropped
@@ -208,7 +216,7 @@ const verify = step({
 // against the release's digest on every hit either way
 const saveDownload = step({
   name: "Save dprint download",
-  if: cacheDownload.and(download.outputs.save.equals("true")),
+  if: cacheDownload.and(cacheSave).and(download.outputs.save.equals("true")),
   uses: "actions/cache/save@v5",
   with: {
     path: downloadDir,
@@ -359,33 +367,49 @@ const check = step({
 }).dependsOn(install).comesAfter(hashCacheBefore);
 
 // runs even when the check fails so the compiled plugins and the incremental
-// state of the correctly formatted files can still be saved
+// state of the correctly formatted files can still be saved; decides here
+// whether to save so the save step and the cache-saved output agree
 const hashCacheAfter = step({
   name: "Check if dprint cache changed",
   id: "cache-after",
   if: conditions.status.always().and(cacheEnabled),
-  env: { HASH_BEFORE: hashCacheBefore.outputs.hash },
+  env: {
+    HASH_BEFORE: hashCacheBefore.outputs.hash,
+    CACHE_SAVE: inputs["cache-save"],
+    PRIMARY_KEY: restoreCache.outputs["cache-primary-key"],
+    CACHE_HIT: restoreCache.outputs["cache-hit"],
+  },
   run: [
     ...hashCacheDir,
     `hash_after=$(hash_cache_dir)`,
     `echo "before: $HASH_BEFORE"`,
     `echo "after:  $hash_after"`,
     `if [ "$hash_after" = "$HASH_BEFORE" ]; then`,
-    `  echo "changed=false" >> "$GITHUB_OUTPUT"`,
+    `  changed=false`,
     `else`,
-    `  echo "changed=true" >> "$GITHUB_OUTPUT"`,
+    `  changed=true`,
     `fi`,
+    `save=false`,
+    `if [ "$changed" != "true" ]; then`,
+    `  echo "The cache didn't change, so there is nothing to save."`,
+    `elif [ "$CACHE_SAVE" != "true" ]; then`,
+    `  echo "The cache changed, but saving is disabled."`,
+    `elif [ -z "$PRIMARY_KEY" ] || [ "$CACHE_HIT" = "true" ]; then`,
+    `  echo "The cache changed, but an entry already exists for this run."`,
+    `else`,
+    `  save=true`,
+    `fi`,
+    `echo "changed=$changed" >> "$GITHUB_OUTPUT"`,
+    `echo "save=$save" >> "$GITHUB_OUTPUT"`,
   ],
-  outputs: ["changed"] as const,
+  outputs: ["changed", "save"] as const,
 }).comesAfter(check);
 
 const saveCache = step({
   name: "Save dprint cache",
   if: conditions.status.always()
     .and(cacheEnabled)
-    .and(restoreCache.outputs["cache-primary-key"].notEquals(""))
-    .and(restoreCache.outputs["cache-hit"].notEquals("true"))
-    .and(hashCacheAfter.outputs.changed.equals("true")),
+    .and(hashCacheAfter.outputs.save.equals("true")),
   uses: "actions/cache/save@v5",
   with: {
     path: cacheDir,
@@ -408,8 +432,12 @@ action({
       value: restoreCache.outputs["cache-matched-key"],
     },
     "cache-changed": {
-      description: "Whether the check changed the cache and so a new cache entry was saved",
+      description: "Whether the check changed the cache",
       value: hashCacheAfter.outputs.changed,
+    },
+    "cache-saved": {
+      description: "Whether a new cache entry was saved (the cache changed and cache-save is enabled)",
+      value: hashCacheAfter.outputs.save,
     },
     "unformatted-count": {
       description: "The number of files that aren't formatted (requires dprint 0.57+)",
