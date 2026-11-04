@@ -44,6 +44,22 @@ const inputs = defineInputs({
 const cacheEnabled = inputs.cache.equals("true");
 const cacheDir = expr("env.DPRINT_CACHE_DIR");
 
+// runs a command up to 3 times so a temporary network error (ex. a dropped
+// connection) doesn't fail the job, waiting a little longer after each failure
+const retryFn = [
+  `retry() {`,
+  `  local attempt=1 code`,
+  `  while true; do`,
+  `    "$@" && return 0`,
+  `    code=$?`,
+  `    if [ "$attempt" -ge 3 ]; then return "$code"; fi`,
+  `    echo "Attempt $attempt of 3 failed with exit code $code, retrying in $((attempt * 5)) seconds..." >&2`,
+  `    sleep $((attempt * 5))`,
+  `    attempt=$((attempt + 1))`,
+  `  done`,
+  `}`,
+];
+
 // the executable is downloaded from the GitHub release and its build provenance
 // attestation (available from dprint 0.57.1) is verified, so nothing outside of
 // GitHub is trusted; gh is available on all GitHub-hosted runners, and without
@@ -57,6 +73,7 @@ const resolve = step({
     GH_TOKEN: expr("github.token"),
   },
   run: [
+    ...retryFn,
     `case "$RUNNER_OS-$RUNNER_ARCH" in`,
     `  Linux-X64) target="x86_64-unknown-linux" ;;`,
     `  Linux-ARM64) target="aarch64-unknown-linux" ;;`,
@@ -76,7 +93,7 @@ const resolve = step({
     `  # the cache key needs the exact version and a cached download is checked`,
     `  # against the release's digest, so look them up (the download step gets`,
     `  # the latest release itself otherwise)`,
-    `  release=$(gh release view \${DPRINT_VERSION:+"$DPRINT_VERSION"} --repo dprint/dprint --json tagName,assets \\`,
+    `  release=$(retry gh release view \${DPRINT_VERSION:+"$DPRINT_VERSION"} --repo dprint/dprint --json tagName,assets \\`,
     `    --jq "[.tagName, (.assets[] | select(.name == \\"$asset\\") | .digest // \\"\\")] | @tsv")`,
     `  IFS=$'\\t' read -r version digest <<< "$release"`,
     `fi`,
@@ -126,6 +143,7 @@ const download = step({
     GH_TOKEN: expr("github.token"),
   },
   run: [
+    ...retryFn,
     `download_dir="$RUNNER_TEMP/dprint-download"`,
     `mkdir -p "$download_dir"`,
     `zip="$download_dir/$ASSET"`,
@@ -140,7 +158,7 @@ const download = step({
     `    echo "The cached download of $ASSET doesn't match the release's digest, so downloading it again."`,
     `  fi`,
     `  if command -v gh > /dev/null; then`,
-    `    gh release download \${VERSION:+"$VERSION"} --repo dprint/dprint --pattern "$ASSET" --output "$zip" --clobber`,
+    `    retry gh release download \${VERSION:+"$VERSION"} --repo dprint/dprint --pattern "$ASSET" --output "$zip" --clobber`,
     `    # the download is cached when the release has a digest to check it against`,
     `    if [ -n "$DIGEST" ]; then save=true; fi`,
     `    if [ "$VERIFY_ATTESTATION" != "true" ]; then`,
@@ -160,7 +178,7 @@ const download = step({
     `      url="https://github.com/dprint/dprint/releases/latest/download/$ASSET"`,
     `    fi`,
     `    # curl drops the authorization header on the redirect to the asset host`,
-    `    curl -fsSL -H "Authorization: Bearer $GH_TOKEN" --output "$zip" "$url"`,
+    `    retry curl -fsSL -H "Authorization: Bearer $GH_TOKEN" --output "$zip" "$url"`,
     `  fi`,
     `  echo "Downloaded $ASSET\${VERSION:+ for dprint $VERSION}."`,
     `fi`,
@@ -179,7 +197,8 @@ const verify = step({
     GH_TOKEN: expr("github.token"),
   },
   run: [
-    `gh attestation verify "$ZIP" --repo dprint/dprint`,
+    ...retryFn,
+    `retry gh attestation verify "$ZIP" --repo dprint/dprint`,
     `echo "Verified the build provenance attestation of $(basename "$ZIP")."`,
   ],
 }).dependsOn(download);

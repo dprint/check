@@ -59,6 +59,17 @@ runs:
         CACHE: "${{ inputs.cache }}"
         GH_TOKEN: "${{ github.token }}"
       run: |-
+        retry() {
+          local attempt=1 code
+          while true; do
+            "$@" && return 0
+            code=$?
+            if [ "$attempt" -ge 3 ]; then return "$code"; fi
+            echo "Attempt $attempt of 3 failed with exit code $code, retrying in $((attempt * 5)) seconds..." >&2
+            sleep $((attempt * 5))
+            attempt=$((attempt + 1))
+          done
+        }
         case "$RUNNER_OS-$RUNNER_ARCH" in
           Linux-X64) target="x86_64-unknown-linux" ;;
           Linux-ARM64) target="aarch64-unknown-linux" ;;
@@ -78,7 +89,7 @@ runs:
           # the cache key needs the exact version and a cached download is checked
           # against the release's digest, so look them up (the download step gets
           # the latest release itself otherwise)
-          release=$(gh release view ${DPRINT_VERSION:+"$DPRINT_VERSION"} --repo dprint/dprint --json tagName,assets \
+          release=$(retry gh release view ${DPRINT_VERSION:+"$DPRINT_VERSION"} --repo dprint/dprint --json tagName,assets \
             --jq "[.tagName, (.assets[] | select(.name == \"$asset\") | .digest // \"\")] | @tsv")
           IFS=$'\t' read -r version digest <<< "$release"
         fi
@@ -114,6 +125,17 @@ runs:
         VERIFY_ATTESTATION: "${{ inputs.verify-attestation }}"
         GH_TOKEN: "${{ github.token }}"
       run: |-
+        retry() {
+          local attempt=1 code
+          while true; do
+            "$@" && return 0
+            code=$?
+            if [ "$attempt" -ge 3 ]; then return "$code"; fi
+            echo "Attempt $attempt of 3 failed with exit code $code, retrying in $((attempt * 5)) seconds..." >&2
+            sleep $((attempt * 5))
+            attempt=$((attempt + 1))
+          done
+        }
         download_dir="$RUNNER_TEMP/dprint-download"
         mkdir -p "$download_dir"
         zip="$download_dir/$ASSET"
@@ -128,7 +150,7 @@ runs:
             echo "The cached download of $ASSET doesn't match the release's digest, so downloading it again."
           fi
           if command -v gh > /dev/null; then
-            gh release download ${VERSION:+"$VERSION"} --repo dprint/dprint --pattern "$ASSET" --output "$zip" --clobber
+            retry gh release download ${VERSION:+"$VERSION"} --repo dprint/dprint --pattern "$ASSET" --output "$zip" --clobber
             # the download is cached when the release has a digest to check it against
             if [ -n "$DIGEST" ]; then save=true; fi
             if [ "$VERIFY_ATTESTATION" != "true" ]; then
@@ -148,7 +170,7 @@ runs:
               url="https://github.com/dprint/dprint/releases/latest/download/$ASSET"
             fi
             # curl drops the authorization header on the redirect to the asset host
-            curl -fsSL -H "Authorization: Bearer $GH_TOKEN" --output "$zip" "$url"
+            retry curl -fsSL -H "Authorization: Bearer $GH_TOKEN" --output "$zip" "$url"
           fi
           echo "Downloaded $ASSET${VERSION:+ for dprint $VERSION}."
         fi
@@ -162,7 +184,18 @@ runs:
         ZIP: "${{ steps.download.outputs.zip }}"
         GH_TOKEN: "${{ github.token }}"
       run: |-
-        gh attestation verify "$ZIP" --repo dprint/dprint
+        retry() {
+          local attempt=1 code
+          while true; do
+            "$@" && return 0
+            code=$?
+            if [ "$attempt" -ge 3 ]; then return "$code"; fi
+            echo "Attempt $attempt of 3 failed with exit code $code, retrying in $((attempt * 5)) seconds..." >&2
+            sleep $((attempt * 5))
+            attempt=$((attempt + 1))
+          done
+        }
+        retry gh attestation verify "$ZIP" --repo dprint/dprint
         echo "Verified the build provenance attestation of $(basename "$ZIP")."
     - name: Save dprint download
       uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
